@@ -6,3 +6,7 @@ cookies-anki-web.json
 
 # captured traffic (may contain tokens)
 *.har
+
+# build output — .skill packages bundle the .env credentials
+dist/
+*.skill
