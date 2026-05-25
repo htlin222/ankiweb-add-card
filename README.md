@@ -1,5 +1,11 @@
 # ankiweb-cli
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+[![Run with uv](https://img.shields.io/badge/run%20with-uv-DE5FE9.svg)](https://docs.astral.sh/uv/)
+![Dependencies](https://img.shields.io/badge/deps-httpx-success.svg)
+![Anki](https://img.shields.io/badge/unofficial-not%20affiliated%20with%20Anki-lightgrey.svg)
+
 A tiny, dependency-light CLI for **AnkiWeb** that creates decks and adds cards
 directly through AnkiWeb's internal protobuf `/svc/` endpoints — no browser, no
 automation framework, no anti-bot bypass needed.
