@@ -23,25 +23,26 @@ A single login obtains both:
    cookie + an `ankiuser-login` token.
 2. `GET ankiuser.net/account/ankiuser-login?t=<token>` → `ankiuser.net` cookie.
 
-Both cookies are cached to `.anki_session.json` and reused until they expire
-(auto-relogin on `403`). Requests and responses are length-delimited protobuf
-(`Content-Type: application/octet-stream`), encoded/decoded by a small hand-rolled
-codec in `anki.py`.
+Both cookies are cached to a session file in the OS temp dir and reused until
+they expire (auto-relogin on `403`). Requests and responses are length-delimited
+protobuf (`Content-Type: application/octet-stream`), encoded/decoded by a small
+hand-rolled codec in `anki.py`.
 
 ## Setup
 
 Requires [`uv`](https://docs.astral.sh/uv/) (dependencies are declared inline via
 PEP 723, so there's nothing to install).
 
-Create a `.env` with your AnkiWeb credentials:
+Create `skill/anki/.env` with your AnkiWeb credentials (the CLI reads the `.env`
+next to `anki.py`):
 
 ```dotenv
 ANKI_USERID=you@example.com
 ANKI_PASSWORD=your-password
 ```
 
-> `.env`, the exported cookie files, `.anki_session.json`, and `*.har` are
-> gitignored — they hold live credentials/sessions. Never commit them.
+> `.env`, the exported cookie files, and `*.har` are gitignored — they hold live
+> credentials/sessions. Never commit them.
 
 ## Usage
 
@@ -80,13 +81,32 @@ uv run anki.py login               # force re-login, refresh cached session
 Names are resolved against your collection; an unknown name produces a
 "did you mean …?" suggestion. Numeric arguments are treated as raw ids.
 
-## Files
+## Claude skill
 
-| File | Purpose |
+The same CLI ships as a Claude skill (for claude.ai / Claude Code). Build the
+package with:
+
+```bash
+make build      # -> dist/anki.skill   (bundles anki.py + SKILL.md + .env)
+make clean      # -> remove dist/
+```
+
+Upload `dist/anki.skill` in claude.ai under **Settings → Capabilities → Skills**
+(the code-execution tool must be enabled). The package bundles `.env`, so it
+contains your live password — keep it private and never share it.
+
+## Layout
+
+| Path | Purpose |
 | --- | --- |
-| `anki.py` | the CLI (single-file `uv` script) |
-| `.env` | your credentials (gitignored) |
-| `.anki_session.json` | cached session cookies (gitignored, `chmod 600`) |
+| `skill/anki/anki.py` | the CLI — single source of truth (stdlib + `httpx`) |
+| `skill/anki/SKILL.md` | skill manifest (how an agent drives the CLI) |
+| `skill/anki/.env` | your credentials (gitignored) |
+| `anki.py` | symlink → `skill/anki/anki.py`, for `uv run anki.py` at the repo root |
+| `Makefile` | `make build` → `dist/anki.skill` |
+| `dist/` | build output (gitignored) |
+
+The session cache lives in the OS temp dir (gitignored anyway), not the repo.
 
 ## Disclaimer
 
