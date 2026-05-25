@@ -1,0 +1,8 @@
+# secrets & live sessions — never commit
+.env
+cookies.json
+cookies-anki-web.json
+.anki_session.json
+
+# captured traffic (may contain tokens)
+*.har
