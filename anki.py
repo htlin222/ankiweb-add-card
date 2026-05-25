@@ -286,8 +286,11 @@ class AnkiWebClient:
         for _id, name in pairs:
             if name == value:
                 return _id
-        if str(value).isdigit():
-            return int(value)
+        if str(value).isdigit():  # numeric id: accept only if it actually exists
+            vid = int(value)
+            if any(_id == vid for _id, _ in pairs):
+                return vid
+            raise AnkiError(f"{kind} id {vid} does not exist")
         matches = [name for _id, name in pairs if str(value).lower() in name.lower()][:5]
         hint = f" Did you mean: {matches}?" if matches else ""
         raise AnkiError(f"{kind} '{value}' not found.{hint}")
