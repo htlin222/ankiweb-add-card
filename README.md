@@ -3,10 +3,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 [![Run with uv](https://img.shields.io/badge/run%20with-uv-DE5FE9.svg)](https://docs.astral.sh/uv/)
-![Dependencies](https://img.shields.io/badge/deps-httpx-success.svg)
+![Dependencies](https://img.shields.io/badge/deps-none%20(stdlib)-success.svg)
 ![Anki](https://img.shields.io/badge/unofficial-not%20affiliated%20with%20Anki-lightgrey.svg)
 
-A tiny, dependency-light CLI for **AnkiWeb** that creates decks and adds cards
+A tiny, dependency-free CLI for **AnkiWeb** that creates decks and adds cards
 directly through AnkiWeb's internal protobuf `/svc/` endpoints — no browser, no
 automation framework, no anti-bot bypass needed.
 
@@ -36,8 +36,9 @@ hand-rolled codec in `anki.py`.
 
 ## Setup
 
-Requires [`uv`](https://docs.astral.sh/uv/) (dependencies are declared inline via
-PEP 723, so there's nothing to install).
+No dependencies — the CLI is pure Python stdlib, so `python3 anki.py …` runs
+anywhere with Python 3.10+. [`uv`](https://docs.astral.sh/uv/) also works
+(`uv run anki.py …`) if you prefer it.
 
 Create `skill/anki/.env` with your AnkiWeb credentials (the CLI reads the `.env`
 next to `anki.py`):
@@ -105,7 +106,7 @@ contains your live password — keep it private and never share it.
 
 | Path | Purpose |
 | --- | --- |
-| `skill/anki/anki.py` | the CLI — single source of truth (stdlib + `httpx`) |
+| `skill/anki/anki.py` | the CLI — single source of truth (pure stdlib, no deps) |
 | `skill/anki/SKILL.md` | skill manifest (how an agent drives the CLI) |
 | `skill/anki/.env` | your credentials (gitignored) |
 | `anki.py` | symlink → `skill/anki/anki.py`, for `uv run anki.py` at the repo root |

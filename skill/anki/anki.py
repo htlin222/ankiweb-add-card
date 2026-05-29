@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["httpx[http2]>=0.27"]
+# dependencies = []
 # ///
 """Minimal AnkiWeb CLI: create_deck and add_card.
 
 Logs in once with credentials from the .env next to this script, caches both
 domain session cookies, and talks to AnkiWeb's protobuf `/svc/` endpoints
-directly (no browser). Run with `python3 anki.py <command>` (needs `httpx`).
+directly (no browser). Pure stdlib — no third-party deps, so `python3 anki.py
+<command>` runs in any Python 3.10+ environment with no install step.
 """
 from __future__ import annotations
 
 import argparse
+import gzip
+import http.cookiejar
+import json
 import sys
 import tempfile
 import time
-import json
+import urllib.error
+import urllib.parse
+import urllib.request
+import zlib
 from pathlib import Path
-
-import httpx
 
 ANKIWEB = "https://ankiweb.net"
 ANKIUSER = "https://ankiuser.net"
@@ -106,11 +111,81 @@ class AnkiError(Exception):
     pass
 
 
+# --------------------------------------------------------------------------- #
+# Tiny stdlib HTTP layer (httpx-shaped, so the client code below is unchanged).
+# Backed by urllib + a cookie jar; no third-party deps means no install step.
+# --------------------------------------------------------------------------- #
+class _Response:
+    def __init__(self, status_code: int, content: bytes) -> None:
+        self.status_code = status_code
+        self.content = content
+
+    @property
+    def text(self) -> str:
+        return self.content.decode(errors="replace")
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise AnkiError(f"HTTP {self.status_code}: {self.text[:200]}")
+
+
+class _Cookies:
+    """Adapter over http.cookiejar exposing the bits AnkiWebClient touches."""
+
+    def __init__(self, jar: http.cookiejar.CookieJar) -> None:
+        self.jar = jar
+
+    def set(self, name: str, value: str, domain: str, path: str = "/") -> None:
+        dot = domain.startswith(".")
+        self.jar.set_cookie(http.cookiejar.Cookie(
+            version=0, name=name, value=value, port=None, port_specified=False,
+            domain=domain, domain_specified=dot, domain_initial_dot=dot,
+            path=path, path_specified=True, secure=True, expires=None,
+            discard=False, comment=None, comment_url=None, rest={}, rfc2109=False,
+        ))
+
+
+class _HttpClient:
+    """Minimal httpx.Client stand-in over urllib (cookies, POST/GET, redirects)."""
+
+    def __init__(self, timeout: int = 30) -> None:
+        self.timeout = timeout
+        self.cookies = _Cookies(http.cookiejar.CookieJar())
+        self._opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(self.cookies.jar)
+        )
+
+    def _request(self, method: str, url: str, *, content=None, headers=None) -> _Response:
+        req = urllib.request.Request(url, data=content, method=method)
+        req.add_header("User-Agent", UA)
+        for k, v in (headers or {}).items():
+            req.add_header(k, v)
+        try:
+            resp = self._opener.open(req, timeout=self.timeout)
+            raw, status, enc = resp.read(), resp.status, resp.headers.get("Content-Encoding", "")
+        except urllib.error.HTTPError as e:  # 4xx/5xx are responses here, not errors
+            raw, status, enc = e.read(), e.code, e.headers.get("Content-Encoding", "")
+        enc = (enc or "").lower()
+        if enc == "gzip":
+            raw = gzip.decompress(raw)
+        elif enc == "deflate":
+            raw = zlib.decompress(raw)
+        return _Response(status, raw)
+
+    def post(self, url: str, *, content: bytes = b"", headers=None) -> _Response:
+        return self._request("POST", url, content=content, headers=headers)
+
+    def get(self, url: str, *, params=None, headers=None, follow_redirects: bool = True) -> _Response:
+        if params:
+            url = f"{url}?{urllib.parse.urlencode(params)}"
+        return self._request("GET", url, headers=headers)  # urllib follows redirects
+
+
 class AnkiWebClient:
     LOGIN_STATUS = {0: "UNKNOWN", 1: "AUTHENTICATED", 2: "INVALID_USER", 3: "INVALID_PASS"}
 
     def __init__(self) -> None:
-        self.client = httpx.Client(http2=True, timeout=30, headers={"User-Agent": UA})
+        self.client = _HttpClient(timeout=30)
         self._load_session()
 
     # ---- session persistence ------------------------------------------------

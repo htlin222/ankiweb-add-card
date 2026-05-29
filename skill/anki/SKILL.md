@@ -22,10 +22,10 @@ skill"**. Always invoke the CLI by absolute path from that base directory:
 
 ```bash
 SKILL="<the base directory for this skill>"
-# httpx is the only dependency; install it once if the import fails:
-python3 -c "import httpx" 2>/dev/null || pip install --quiet "httpx[http2]"
 python3 "$SKILL/anki.py" <command> [args]
 ```
+
+The CLI is pure Python stdlib — no dependencies, no install step.
 
 Login happens automatically on the first command and is cached; don't run
 `login` unless a command fails with an auth error.
@@ -33,10 +33,9 @@ Login happens automatically on the first command and is cached; don't run
 ## Commands
 
 ```bash
-# Create a deck ('::' nests subdecks)
+# Typical flow: make a new deck ('::' nests subdecks), then add a card to it.
+# Positional values fill the note type's fields IN ORDER.
 python3 "$SKILL/anki.py" create_deck "Spanish::Verbs"
-
-# Add a card. Positional values fill the note type's fields IN ORDER.
 python3 "$SKILL/anki.py" add_card "hola" "hello" -d "Spanish::Verbs" -n Basic
 
 # Override a field by name, attach tags
