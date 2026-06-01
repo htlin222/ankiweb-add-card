@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = []
 # ///
-"""Minimal AnkiWeb CLI: create_deck and add_card.
+"""Minimal AnkiWeb CLI: create decks, add/search/edit cards.
 
 Logs in once with credentials from the .env next to this script, caches both
 domain session cookies, and talks to AnkiWeb's protobuf `/svc/` endpoints
@@ -336,6 +336,62 @@ class AnkiWebClient:
         return {"deck_id": deck_id, "notetype_id": notetype_id,
                 "fields": dict(zip(field_names, field_vals)), "tags": tags}
 
+    def search(self, query: str) -> list[tuple[int, str]]:
+        """Find notes matching an Anki search query -> [(note_id, summary), ...].
+
+        `query` uses Anki's search syntax (e.g. 'deck:Spanish', 'front:hola',
+        'tag:verb', or just free text). Runs on ankiweb.net (cookie c=1).
+        """
+        self.ensure_login()
+        raw = self._svc(ANKIWEB, "/svc/search/search", pb_string(1, query))
+        out = []
+        for m in pb_decode(raw).get(1, []):
+            d = pb_decode(m)
+            out.append((d.get(1, [0])[0], _as_str(d.get(2, [b""])[0])))
+        return out
+
+    def get_note_info(self, note_id: int) -> dict:
+        """Current field names/values and tags for a note (ankiuser.net)."""
+        self.ensure_login()
+        d = pb_decode(self._svc(ANKIUSER, "/svc/editor/get-note-info", pb_int(1, int(note_id))))
+        names = self._field_names(d.get(2, []))
+        if not names:
+            raise AnkiError(f"note {note_id} not found (no fields returned)")
+        return {
+            "fields": names,                                  # field names, in order
+            "values": [_as_str(v) for v in d.get(1, [])],     # current field values
+            "tags": _as_str(d.get(3, [b""])[0]),              # space-separated tags
+        }
+
+    def update_card(self, note_id, values=(), named=None, tags=None) -> dict:
+        """Edit an existing note in place. Unspecified fields keep their current
+        value; tags are preserved unless `tags` is given. Uses the same
+        add-or-update endpoint as add_card but in *edit mode* (field 4 = note id),
+        so it never creates a duplicate note."""
+        info = self.get_note_info(note_id)
+        field_names = info["fields"]
+        field_vals = list(info["values"]) + [""] * (len(field_names) - len(info["values"]))
+        if len(values) > len(field_names):
+            raise AnkiError(
+                f"note has {len(field_names)} fields {field_names}, "
+                f"but {len(values)} positional values were given"
+            )
+        for idx, v in enumerate(values):
+            field_vals[idx] = v
+        for k, v in (named or {}).items():
+            if k not in field_names:
+                raise AnkiError(f"unknown field '{k}'; available: {field_names}")
+            field_vals[field_names.index(k)] = v
+        out_tags = info["tags"] if tags is None else tags
+
+        body = b"".join(pb_string(1, fv) for fv in field_vals)
+        if out_tags:
+            body += pb_string(2, out_tags)
+        body += pb_message(4, pb_int(1, int(note_id)))  # edit mode
+        self._svc(ANKIUSER, "/svc/editor/add-or-update", body)
+        return {"note_id": int(note_id),
+                "fields": dict(zip(field_names, field_vals)), "tags": out_tags}
+
     # ---- decks (ankiweb.net) ------------------------------------------------
     def create_deck(self, name: str) -> int | None:
         self.ensure_login()
@@ -385,6 +441,19 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Set a field by name (repeatable; overrides positional)")
     pa.add_argument("-t", "--tags", default="", help="Space-separated tags")
 
+    pu = sub.add_parser("update_card", help="Edit an existing note in place (no duplicate)")
+    pu.add_argument("note_id", help="Note id (from `search`, or the /edit/<id> URL)")
+    pu.add_argument("values", nargs="*",
+                    help="New field values in notetype order; omitted trailing "
+                         "positions keep their current value")
+    pu.add_argument("-f", "--field", action="append", default=[], metavar="NAME=VALUE",
+                    help="Set one field by name (repeatable; best for editing a single field)")
+    pu.add_argument("-t", "--tags", default=None,
+                    help="Replace tags (default: keep the note's existing tags)")
+
+    ps = sub.add_parser("search", help="Find notes; prints 'note_id<TAB>summary'")
+    ps.add_argument("query", help="Anki search query, e.g. 'deck:Spanish front:hola'")
+
     pr = sub.add_parser("remove-deck", help="Remove a deck (and its cards)")
     pr.add_argument("deck", help="Deck name or id")
 
@@ -419,6 +488,26 @@ def main(argv=None) -> None:
                   + (f", tags '{res['tags']}'" if res["tags"] else ""))
             for k, v in res["fields"].items():
                 print(f"  {k}: {v!r}")
+        elif args.cmd == "update_card":
+            if not str(args.note_id).isdigit():
+                raise AnkiError(f"note_id must be numeric, got {args.note_id!r}")
+            named = {}
+            for f in args.field:
+                if "=" not in f:
+                    raise AnkiError(f"--field expects NAME=VALUE, got {f!r}")
+                k, v = f.split("=", 1)
+                named[k] = v
+            res = client.update_card(args.note_id, args.values, named, args.tags)
+            print(f"updated note {res['note_id']}"
+                  + (f", tags '{res['tags']}'" if res["tags"] else ""))
+            for k, v in res["fields"].items():
+                print(f"  {k}: {v!r}")
+        elif args.cmd == "search":
+            rows = client.search(args.query)
+            for nid, summary in rows:
+                print(f"{nid}\t{summary}")
+            if not rows:
+                print("(no matches)", file=sys.stderr)
         elif args.cmd == "list-decks":
             for did, name in client.get_info_for_adding()["decks"]:
                 print(f"{did}\t{name}")

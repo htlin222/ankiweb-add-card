@@ -46,6 +46,14 @@ python3 "$SKILL/anki.py" add_card "Q" "A" -f "Extra=a note" -t "tag1 tag2"
 # Omit -d/-n to use the user's last-used deck and note type
 python3 "$SKILL/anki.py" add_card "front" "back"
 
+# Find existing notes (Anki search syntax) -> 'note_id<TAB>field-summary'
+python3 "$SKILL/anki.py" search "deck:Spanish front:hola"
+
+# Edit a card in place by note id (from `search`, or the /edit/<id> URL).
+# Unspecified fields keep their current value; tags persist unless -t is given.
+python3 "$SKILL/anki.py" update_card 1780339347382 -f "Front=hola (informal)"
+python3 "$SKILL/anki.py" update_card 1780339347382 "new front" "new back"  # positional
+
 # Discover available decks / note types (id<TAB>name)
 python3 "$SKILL/anki.py" list-decks
 python3 "$SKILL/anki.py" list-notetypes
@@ -64,6 +72,32 @@ python3 "$SKILL/anki.py" remove-deck "Spanish::Verbs"
 | `-n, --notetype` | note type name or numeric id; default: last used |
 | `-f, --field NAME=VALUE` | set a field by name; repeatable; overrides positional |
 | `-t, --tags` | space-separated tags |
+
+### Editing an existing card (`search` + `update_card`)
+
+There is no "edit by content" — you edit by **note id**, which you get from
+`search` (or from the AnkiWeb editor URL `ankiuser.net/edit/<note_id>`).
+
+1. `search "<query>"` — Anki search syntax (`deck:X`, `front:Y`, `tag:Z`, or
+   free text). Prints `note_id<TAB>summary` (fields joined by ` / `).
+2. `update_card <note_id> …` — edits that note **in place** (same note id, no
+   duplicate created).
+
+| `update_card` flag | Meaning |
+| --- | --- |
+| positional `note_id` | required; numeric id from `search` |
+| positional `values...` | new field values in order; **omitted trailing positions keep their current value** |
+| `-f, --field NAME=VALUE` | set one field by name; repeatable — **preferred for changing a single field** |
+| `-t, --tags` | replace tags; **omit to keep the note's existing tags** |
+
+Safety notes:
+
+- Editing only ever touches the one note you name; unspecified fields and (when
+  `-t` is omitted) tags are read back and preserved, so a partial edit never
+  blanks the rest of the card.
+- AnkiWeb still has **no single-note delete** — `update_card` cannot remove a
+  note, only change its content. To delete, you must `remove-deck` the whole
+  deck (see Testing in CLAUDE.md).
 
 ## Card design — default to *short question / short answer / context below*
 

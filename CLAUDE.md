@@ -15,23 +15,37 @@ official API. Also ships as a Claude skill (`make build` → `dist/anki.skill`).
 - logs in via `.env` creds and caches both domain cookies (`login()`),
 - hand-rolls protobuf encode/decode (`pb_*`, `_varint`) — only the wire types
   AnkiWeb uses,
-- exposes `create_deck`, `add_card`, `remove-deck`, `list-decks`,
-  `list-notetypes`, `login`.
+- exposes `create_deck`, `add_card`, `update_card`, `search`, `remove-deck`,
+  `list-decks`, `list-notetypes`, `login`.
 
 AnkiWeb splits its API across two domains, each with its own session cookie from
 one login:
 
 | Operation | Host | Cookie `c` |
 | --- | --- | --- |
-| add/list cards & notetypes | `ankiuser.net` | 2 |
-| create/list/remove decks | `ankiweb.net` | 1 |
+| add/update/list cards & notetypes, get-note-info | `ankiuser.net` | 2 |
+| create/list/remove decks, **search** | `ankiweb.net` | 1 |
 
 Login is two steps: `POST ankiweb.net/svc/account/login` → `ankiweb.net` cookie
 + an `ankiuser-login` token; then `GET ankiuser.net/account/ankiuser-login?t=…`
 → `ankiuser.net` cookie.
 
-The `add-or-update` selection message is `{1: notetype_id, 2: deck_id}` — note
-the order (notetype first).
+`/svc/editor/add-or-update` (ankiuser.net) is a `oneof mode` — it both adds and
+edits. The proto (reverse-engineered from AnkiWeb's SvelteKit frontend):
+
+```
+fields  = 1 (repeated string)
+tags    = 2 (string)
+add     = 3 (msg {1: notetype_id, 2: deck_id})   # mode: create new note
+edit    = 4 (msg {1: note_id})                   # mode: edit existing note
+```
+
+So `add_card` sends field 3 (notetype first), `update_card` sends field 4. Edit
+mode replaces the note's fields, so `update_card` first calls
+`/svc/editor/get-note-info` (`{1: note_id}` → `{1: values, 2: notetype_fields,
+3: tags}`) to read current values/tags and preserve anything not being changed.
+`search` posts `/svc/search/search` (`{1: query}`) and gets back repeated
+`{1: note_id, 2: field-summary}`.
 
 ## Editing
 
