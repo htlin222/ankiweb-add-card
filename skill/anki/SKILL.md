@@ -58,6 +58,11 @@ python3 "$SKILL/anki.py" update_card 1780339347382 "new front" "new back"  # pos
 python3 "$SKILL/anki.py" list-decks
 python3 "$SKILL/anki.py" list-notetypes
 
+# Rename a deck (keeps the same id and its cards). A '::' in the new name
+# moves it under a parent, auto-creating the parent if needed.
+python3 "$SKILL/anki.py" rename-deck "Spanish" "Español"
+python3 "$SKILL/anki.py" rename-deck "Español" "Languages::Español"   # move under parent
+
 # Remove a deck and its cards. Removing a parent also removes every subdeck
 # beneath it (e.g. remove-deck "Spanish" deletes "Spanish::Verbs" too).
 python3 "$SKILL/anki.py" remove-deck "Spanish::Verbs"
@@ -142,6 +147,9 @@ Rules of thumb when generating cards:
   human name; the CLI resolves it. If the user names a deck/type you're unsure
   exists, run `list-decks` / `list-notetypes` first and pass the exact name.
 - An unknown name returns a "Did you mean …?" hint — surface it to the user.
+- **`rename-deck` to a name that already exists does not error** — AnkiWeb
+  silently appends `+` (e.g. `Spanish` → `Spanish+`). Check `list-decks` if the
+  target name might collide.
 - The standard **Basic** note type takes two values: Front then Back. Other
   note types may have more fields; the CLI reports the field names on success
   and errors if too many positional values are given.

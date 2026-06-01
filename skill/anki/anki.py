@@ -408,6 +408,18 @@ class AnkiWebClient:
         self._svc(ANKIWEB, "/svc/decks/remove-deck", pb_int(1, deck_id))
         return deck_id
 
+    def rename_deck(self, deck, new_name: str) -> dict:
+        """Rename a deck (ankiweb.net). A '::' in new_name moves it under a
+        parent. The endpoint returns {1: error}; a non-empty error is raised."""
+        self.ensure_login()
+        deck_id = self._resolve(deck, self.get_info_for_adding()["decks"], "deck")
+        raw = self._svc(ANKIWEB, "/svc/decks/rename-deck",
+                        pb_int(1, deck_id) + pb_string(2, new_name))
+        err = _as_str(pb_decode(raw).get(1, [b""])[0]) if raw else ""
+        if err:
+            raise AnkiError(f"rename failed: {err}")
+        return {"deck_id": deck_id, "new_name": new_name}
+
     @staticmethod
     def _resolve(value, pairs: list[tuple[int, str]], kind: str) -> int:
         for _id, name in pairs:
@@ -457,6 +469,10 @@ def build_parser() -> argparse.ArgumentParser:
     pr = sub.add_parser("remove-deck", help="Remove a deck (and its cards)")
     pr.add_argument("deck", help="Deck name or id")
 
+    prn = sub.add_parser("rename-deck", help="Rename a deck ('::' moves it under a parent)")
+    prn.add_argument("deck", help="Current deck name or id")
+    prn.add_argument("new_name", help="New deck name")
+
     sub.add_parser("login", help="Force re-login and refresh the cached session")
     sub.add_parser("list-decks", help="List decks as 'id<TAB>name'")
     sub.add_parser("list-notetypes", help="List notetypes as 'id<TAB>name'")
@@ -476,6 +492,9 @@ def main(argv=None) -> None:
         elif args.cmd == "remove-deck":
             did = client.remove_deck(args.deck)
             print(f"removed deck {did}")
+        elif args.cmd == "rename-deck":
+            res = client.rename_deck(args.deck, args.new_name)
+            print(f"renamed deck {res['deck_id']} -> '{res['new_name']}'")
         elif args.cmd == "add_card":
             named = {}
             for f in args.field:

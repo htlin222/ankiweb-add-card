@@ -15,8 +15,8 @@ official API. Also ships as a Claude skill (`make build` → `dist/anki.skill`).
 - logs in via `.env` creds and caches both domain cookies (`login()`),
 - hand-rolls protobuf encode/decode (`pb_*`, `_varint`) — only the wire types
   AnkiWeb uses,
-- exposes `create_deck`, `add_card`, `update_card`, `search`, `remove-deck`,
-  `list-decks`, `list-notetypes`, `login`.
+- exposes `create_deck`, `rename-deck`, `add_card`, `update_card`, `search`,
+  `remove-deck`, `list-decks`, `list-notetypes`, `login`.
 
 AnkiWeb splits its API across two domains, each with its own session cookie from
 one login:
@@ -24,7 +24,7 @@ one login:
 | Operation | Host | Cookie `c` |
 | --- | --- | --- |
 | add/update/list cards & notetypes, get-note-info | `ankiuser.net` | 2 |
-| create/list/remove decks, **search** | `ankiweb.net` | 1 |
+| create/rename/list/remove decks, **search** | `ankiweb.net` | 1 |
 
 Login is two steps: `POST ankiweb.net/svc/account/login` → `ankiweb.net` cookie
 + an `ankiuser-login` token; then `GET ankiuser.net/account/ankiuser-login?t=…`
