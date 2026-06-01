@@ -35,6 +35,8 @@ Login happens automatically on the first command and is cached; don't run
 ```bash
 # Typical flow: make a new deck ('::' nests subdecks), then add a card to it.
 # Positional values fill the note type's fields IN ORDER.
+# Nesting goes arbitrarily deep; missing parent levels are auto-created in one
+# call (here both 'Spanish' and 'Spanish::Verbs' come into existence).
 python3 "$SKILL/anki.py" create_deck "Spanish::Verbs"
 python3 "$SKILL/anki.py" add_card "hola" "hello" -d "Spanish::Verbs" -n Basic
 
@@ -48,7 +50,8 @@ python3 "$SKILL/anki.py" add_card "front" "back"
 python3 "$SKILL/anki.py" list-decks
 python3 "$SKILL/anki.py" list-notetypes
 
-# Remove a deck and its cards
+# Remove a deck and its cards. Removing a parent also removes every subdeck
+# beneath it (e.g. remove-deck "Spanish" deletes "Spanish::Verbs" too).
 python3 "$SKILL/anki.py" remove-deck "Spanish::Verbs"
 ```
 
@@ -61,6 +64,43 @@ python3 "$SKILL/anki.py" remove-deck "Spanish::Verbs"
 | `-n, --notetype` | note type name or numeric id; default: last used |
 | `-f, --field NAME=VALUE` | set a field by name; repeatable; overrides positional |
 | `-t, --tags` | space-separated tags |
+
+## Card design — default to *short question / short answer / context below*
+
+Unless the user asks for a different format, author cards in this shape. It
+balances the two failure modes of flashcards (too granular → context-free
+trivia; too dense → overloaded "leech" cards that get repeated at the pace of
+their hardest part) by keeping the **recall atomic** while letting the
+**understanding keep its context**.
+
+- **Front = one focused question.** A single, irreducible concept. If you can't
+  answer it in a few words, it's hiding more than one card — split it.
+- **Back, line 1 = the short answer.** This is the *only* thing being tested.
+  Keep it to the minimal correct response (a term, number, mechanism).
+- **Back, below an `<hr>` = the context.** Explanation, mnemonic, "why", source.
+  This is read *after* recalling — it deepens understanding but is **not** part
+  of the graded retrieval.
+
+```bash
+# Front holds the question; Back puts the graded answer first, then context.
+python3 "$SKILL/anki.py" add_card \
+  "What does a positive Murphy's sign indicate?" \
+  "Acute cholecystitis<hr>Inspiratory arrest on RUQ palpation due to an inflamed gallbladder contacting the examiner's hand. Sensitive but not specific; absent in many elderly/perforated cases."
+```
+
+Rules of thumb when generating cards:
+
+- **Err toward more, smaller cards** than feels natural — but stop before the
+  answer becomes a context-free fact you can't reason about. The context block
+  is what prevents over-atomization.
+- **If the context keeps growing**, the question is smuggling in a second
+  concept — make another card instead of fattening this one.
+- **Lists/enumerations are the exception**: don't make a 7-item answer and don't
+  shatter it into 7 disconnected cards — use a **Cloze** note type with one
+  deletion per item (`{{c1::…}} {{c2::…}}`) so each item is recalled in place.
+- **Keep the answer effortful but achievable** — skip trivially easy cards;
+  active recall + spaced repetition only pays off when retrieval is non-trivial
+  yet succeeds.
 
 ## Usage notes
 
