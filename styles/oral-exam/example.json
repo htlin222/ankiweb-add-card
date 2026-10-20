@@ -1,0 +1,57 @@
+[
+  {
+    "qid": "110-001・Q1",
+    "topic": "von Willebrand disease 的診斷路徑與切點",
+    "ask": "門診來了一個 25 歲女生，月經量大到會貧血，拔智齒後滲血三天。你從哪一步開始？會開哪些檢驗？",
+    "keywords": [
+      "pretest probability",
+      "bleeding assessment tool（ISTH-BAT）",
+      "VWF:Ag",
+      "VWF activity",
+      "FVIII activity"
+    ],
+    "answer": "第一步先判斷 pretest probability，因為它決定 BAT 的角色。低機率（例如術前意外發現、沒有家族史）可以先用 bleeding score 篩，分數不高就先不做特異性檢測；一旦決定要驗，初始三件套是 VWF:Ag、VWF activity（GPIb binding assay 或 VWF:RCo）、FVIII activity 一起送。",
+    "followup": "如果她的一等親已經確診 VWD，你還要先算 bleeding score 嗎？（答：不要。高機率者直接抽 VWF，BAT 是低機率者的 rule-out 守門員，不是高風險者的擋箭牌。）",
+    "note": "主考官想確認的是：你面對一個「疑似 VWD」的病人，能不能決定該不該抽血、看懂兩條切點、並用 DDAVP trial 把 type 1C 抓出來。",
+    "tags": "110 110-001 凝血 口試快答"
+  },
+  {
+    "qid": "110-012・Q5",
+    "topic": "核型正常 AML 的分子突變譜與 NPM1",
+    "ask": "（天花板）題幹提到 AML 有九大類與致病機轉相關的基因。你能舉出幾類？各給一個代表基因。",
+    "keywords": [
+      "transcription-factor fusion",
+      "NPM1",
+      "tumor suppressor（TP53）",
+      "DNA methylation（DNMT3A、TET2、IDH1/2）",
+      "activated signaling（FLT3、KIT、RAS）",
+      "chromatin modifier（ASXL1、KMT2A/MLL）",
+      "myeloid transcription factor（RUNX1、CEBPA）",
+      "cohesin complex（STAG2）",
+      "spliceosome（SRSF2、SF3B1、U2AF1）"
+    ],
+    "answer": "常見的功能分類方式是九類：轉錄因子融合基因（如 PML-RARA、RUNX1-RUNX1T1）、NPM1 自成一類、腫瘤抑制基因（TP53、WT1）、DNA 甲基化相關（DNMT3A、TET2、IDH1/IDH2）、活化訊號傳遞（FLT3、KIT、NRAS/KRAS）、染色質修飾（ASXL1、KMT2A/MLL 重排）、髓系轉錄因子（RUNX1、CEBPA）、cohesin 複合體（STAG2、RAD21）、以及 spliceosome 複合體（SRSF2、SF3B1、U2AF1）。臨床意義是：這些類別大致對應不同的致病步驟與可用藥標的——例如 IDH1/2 有 ivosidenib／enasidenib、FLT3 有 midostaurin／gilteritinib。",
+    "followup": "那 RUNX1 和 CEBPA 在 CN-AML 的地位如何？——兩者在 CN-AML 都屬相對低頻的突變，跟「最盛行」搆不上邊；它們在考題裡通常出現在預後分層與表型的位置（例如 bZIP in-frame 的 CEBPA 突變屬 favorable、RUNX1 突變傳統上偏 adverse），不是盛行率之爭。",
+    "note": "主考官想確認的是：低倍鏡看不出東西的那一半 AML 病人，你知道要去分子層級找什麼、找到之後怎麼分層、以及怎麼追。",
+    "tags": "110 110-012 凝血 口試快答"
+  },
+  {
+    "qid": "110-001・及格線與紅旗",
+    "topic": "von Willebrand disease 的診斷路徑與切點",
+    "ask": "這一題的及格線在哪？講錯哪幾句會被打紅旗？",
+    "answer": [
+      "及格：至少要說得出「0.30 不問出血、0.30–0.50 要有出血」這兩條線；說得出 type 1C 是清除加速、要靠 DDAVP trial 在 1 小時與 4 小時抽血；知道 BAT 用在低機率族群。",
+      "<span class=\"flag\">紅旗</span>：如果他說「一等親確診的病人先做 bleeding score，分數低就不用抽了」，代表他把篩檢工具的方向用反，臨床上會漏掉真正該診斷的人。",
+      "<span class=\"flag\">紅旗</span>：如果他說「VWF 低於 0.5 就是 type 1 VWD」，代表他把兩條切點壓成一條，會把大量 low VWF 的人誤貼終身診斷標籤。",
+      "<span class=\"flag\">紅旗</span>：如果他把 type 1C 講成「VWF 合成不足所以 baseline 很低」，代表他沒抓到 1C 的核心是清除，後續的 DDAVP 判讀也會跟著錯。"
+    ],
+    "note": "主考官想確認的是：你面對一個「疑似 VWD」的病人，能不能決定該不該抽血、看懂兩條切點、並用 DDAVP trial 把 type 1C 抓出來。",
+    "details": [
+      {
+        "summary": "素材註記",
+        "body": "DDAVP trial 判定 increased clearance 是否有明列的量化門檻，共筆內部說法不一，本則只寫方向「1 小時衝高、4 小時明顯回落」，不寫百分比。共筆原詳解漏掉 0.30 IU/mL 這條不需出血的絕對切點；本則依答案欄補回兩段式切點。"
+      }
+    ],
+    "tags": "110 110-001 凝血 及格線紅旗 口試快答"
+  }
+]

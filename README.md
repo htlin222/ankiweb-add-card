@@ -112,6 +112,7 @@ contains your live password — keep it private and never share it.
 | `anki.py` | symlink → `skill/anki/anki.py`, for `uv run anki.py` at the repo root |
 | `Makefile` | `make build` → `dist/anki.skill` |
 | `dist/` | build output (gitignored) |
+| `styles/oral-exam/` | 血專口試快答 card style guide: CSS (light + dark), templates, field generator, preview |
 
 The session cache lives in the OS temp dir (gitignored anyway), not the repo.
 
