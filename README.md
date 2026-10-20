@@ -70,6 +70,7 @@ uv run anki.py add_card "front" "back"
 # Pronunciation (TTS embedded in the card; AnkiWeb has no media upload)
 uv run anki.py add_card "tag" "標籤" -a "tag"
 uv run anki.py update_card 1234567890 -a "標籤" --audio-lang zh-TW --audio-field Back
+uv run anki.py add_card "tag" "標籤" -a "tag" --audio-engine piper   # local, offline
 
 # Discovery
 uv run anki.py list-decks          # id<TAB>name
@@ -88,9 +89,11 @@ uv run anki.py login               # force re-login, refresh cached session
 | `-n, --notetype` | notetype **name** or numeric id; default: last used |
 | `-f, --field NAME=VALUE` | set a field by name (repeatable; overrides positional) |
 | `-t, --tags` | space-separated tags |
-| `-a, --audio TEXT` | append a spoken player for TEXT (Google TTS, embedded as a `data:` URI — no media upload needed); repeatable, max 200 chars; also on `update_card` |
+| `-a, --audio TEXT` | append a spoken player for TEXT, embedded as a `data:` URI (no media upload needed); repeatable; also on `update_card` |
 | `--audio-lang` | TTS language: `en` (default), `en-GB`, `ja`, `zh-TW`, … |
 | `--audio-field NAME` | field to append the audio to (default: first field) |
+| `--audio-engine` | `google` (online, default, max 200 chars) or `piper` (local [Piper](https://github.com/rhasspy/piper) neural TTS: `pip install piper-tts`; voices auto-download to `$PIPER_DATA_DIR`, default `~/.local/share/piper`). Set `ANKI_AUDIO_ENGINE=piper` to make it the default |
+| `--audio-voice` | Piper voice (default by language: `en_US-lessac-medium`, `en_GB-alba-medium`, `zh_CN-huayan-medium`); needed for other languages, e.g. `de_DE-thorsten-medium` |
 
 Names are resolved against your collection; an unknown name produces a
 "did you mean …?" suggestion. Numeric arguments are treated as raw ids.

@@ -17,8 +17,9 @@ official API. Also ships as a Claude skill (`make build` → `dist/anki.skill`).
   AnkiWeb uses,
 - exposes `create_deck`, `rename-deck`, `add_card`, `update_card`, `search`,
   `remove-deck`, `list-decks`, `list-notetypes`, `login`.
-- `--audio` (add/update) fetches Google Translate TTS and embeds it as a
-  `data:audio/mpeg` `<audio>` tag — AnkiWeb has no media-upload endpoint, and
+- `--audio` (add/update) synthesizes speech — Google Translate TTS (default) or
+  local Piper (`--audio-engine piper`, ffmpeg → mp3 when available, else WAV) —
+  and embeds it as a `data:` URI `<audio>` tag — AnkiWeb has no media-upload endpoint, and
   `[sound:]` only plays files already synced from a desktop/mobile client.
 
 AnkiWeb splits its API across two domains, each with its own session cookie from

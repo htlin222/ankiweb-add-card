@@ -17,7 +17,10 @@ import base64
 import gzip
 import http.cookiejar
 import json
+import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -114,20 +117,26 @@ class AnkiError(Exception):
 
 
 # --------------------------------------------------------------------------- #
-# Audio: AnkiWeb has no media upload, so speech is fetched from Google
-# Translate's TTS and embedded in the field as a data: URI <audio> player.
+# Audio: AnkiWeb has no media upload, so speech is synthesized here and
+# embedded in the field as a data: URI <audio> player. Two engines:
+#   google  Google Translate TTS (online, no setup, unofficial endpoint)
+#   piper   local neural TTS (`pip install piper-tts`; voices auto-download)
 # --------------------------------------------------------------------------- #
 TTS_URL = "https://translate.google.com/translate_tts"
-TTS_MAX_CHARS = 200  # the endpoint rejects longer text
+TTS_MAX_CHARS = 200  # Google's endpoint rejects longer text
+# Default Piper voice per language (https://huggingface.co/rhasspy/piper-voices).
+# Piper has no Taiwanese Mandarin voice; zh_CN-huayan is the only Chinese one.
+PIPER_VOICES = {
+    "en": "en_US-lessac-medium", "en-us": "en_US-lessac-medium",
+    "en-gb": "en_GB-alba-medium",
+    "zh": "zh_CN-huayan-medium", "zh-cn": "zh_CN-huayan-medium", "zh-tw": "zh_CN-huayan-medium",
+}
+PIPER_DATA_DIR = Path(os.environ.get("PIPER_DATA_DIR", Path.home() / ".local/share/piper"))
 
 
-def tts_audio_html(text: str, lang: str = "en") -> str:
-    """Speak `text` in `lang` and return an embeddable <audio controls> tag."""
-    text = text.strip()
-    if not text:
-        raise AnkiError("--audio text is empty")
+def _tts_google(text: str, lang: str) -> tuple[str, bytes]:
     if len(text) > TTS_MAX_CHARS:
-        raise AnkiError(f"--audio text is {len(text)} chars; the TTS limit is {TTS_MAX_CHARS}")
+        raise AnkiError(f"--audio text is {len(text)} chars; the Google TTS limit is {TTS_MAX_CHARS}")
     url = f"{TTS_URL}?{urllib.parse.urlencode({'ie': 'UTF-8', 'client': 'tw-ob', 'tl': lang, 'q': text})}"
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=30) as r:
@@ -136,7 +145,57 @@ def tts_audio_html(text: str, lang: str = "en") -> str:
         raise AnkiError(f"TTS request failed for {text!r} ({lang}): {e}") from e
     if not ctype.startswith("audio/") or not mp3:
         raise AnkiError(f"TTS returned {ctype or 'no content type'} instead of audio for {text!r}")
-    return f'<audio controls src="data:audio/mpeg;base64,{base64.b64encode(mp3).decode()}"></audio>'
+    return "audio/mpeg", mp3
+
+
+def _piper_python() -> str:
+    """Interpreter that has piper-tts: this one, or the one behind the `piper` script."""
+    try:
+        import piper  # noqa: F401
+        return sys.executable
+    except ImportError:
+        pass
+    exe = shutil.which("piper")
+    if exe:
+        first = Path(exe).read_bytes()[:256].split(b"\n", 1)[0]
+        if first.startswith(b"#!") and b"python" in first:
+            return first[2:].decode().strip()
+    raise AnkiError("piper not found; install it with `pip install piper-tts`")
+
+
+def _tts_piper(text: str, lang: str, voice: str | None) -> tuple[str, bytes]:
+    voice = voice or PIPER_VOICES.get(lang.lower()) or PIPER_VOICES.get(lang.lower().split("-")[0])
+    if not voice:
+        raise AnkiError(f"no default Piper voice for '{lang}'; pass --audio-voice (e.g. de_DE-thorsten-medium)")
+    py = _piper_python()
+    model = PIPER_DATA_DIR / f"{voice}.onnx"
+    if not model.exists():
+        PIPER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        print(f"downloading Piper voice {voice} -> {PIPER_DATA_DIR}", file=sys.stderr)
+        dl = [py, "-m", "piper.download_voices", "--data-dir", str(PIPER_DATA_DIR), voice]
+        if subprocess.run(dl, stdout=sys.stderr).returncode or not model.exists():
+            raise AnkiError(f"could not download Piper voice {voice!r}")
+    with tempfile.TemporaryDirectory() as tmp:
+        wav = Path(tmp) / "out.wav"
+        r = subprocess.run([py, "-m", "piper", "-m", str(model), "-f", str(wav)], input=text.encode(),
+                           capture_output=True)
+        if r.returncode or not wav.exists():
+            raise AnkiError(f"piper failed: {r.stderr.decode(errors='replace')[-300:]}")
+        if shutil.which("ffmpeg"):  # mp3 is ~6x smaller than WAV and plays everywhere
+            mp3 = Path(tmp) / "out.mp3"
+            if subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-ac", "1",
+                               "-b:a", "48k", str(mp3)]).returncode == 0:
+                return "audio/mpeg", mp3.read_bytes()
+        return "audio/wav", wav.read_bytes()
+
+
+def tts_audio_html(text: str, lang: str = "en", engine: str = "google", voice: str | None = None) -> str:
+    """Speak `text` and return an embeddable <audio controls> tag."""
+    text = text.strip()
+    if not text:
+        raise AnkiError("--audio text is empty")
+    mime, data = _tts_piper(text, lang, voice) if engine == "piper" else _tts_google(text, lang)
+    return f'<audio controls src="data:{mime};base64,{base64.b64encode(data).decode()}"></audio>'
 
 
 def _append_audio(field_names: list[str], field_vals: list[str], audio) -> None:
@@ -503,6 +562,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="TTS language code, e.g. en, en-GB, ja, zh-TW (default: en)")
     pa.add_argument("--audio-field", metavar="NAME",
                     help="Field to append audio to (default: the first field)")
+    pa.add_argument("--audio-engine", choices=["google", "piper"],
+                    default=os.environ.get("ANKI_AUDIO_ENGINE", "google"),
+                    help="TTS engine: google (online) or piper (local); default: "
+                         "$ANKI_AUDIO_ENGINE or google")
+    pa.add_argument("--audio-voice", metavar="VOICE",
+                    help="Piper voice, e.g. en_GB-alba-medium (default: by --audio-lang)")
 
     pu = sub.add_parser("update_card", help="Edit an existing note in place (no duplicate)")
     pu.add_argument("note_id", help="Note id (from `search`, or the /edit/<id> URL)")
@@ -519,6 +584,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="TTS language code, e.g. en, en-GB, ja, zh-TW (default: en)")
     pu.add_argument("--audio-field", metavar="NAME",
                     help="Field to append audio to (default: the first field)")
+    pu.add_argument("--audio-engine", choices=["google", "piper"],
+                    default=os.environ.get("ANKI_AUDIO_ENGINE", "google"),
+                    help="TTS engine: google (online) or piper (local); default: "
+                         "$ANKI_AUDIO_ENGINE or google")
+    pu.add_argument("--audio-voice", metavar="VOICE",
+                    help="Piper voice, e.g. en_GB-alba-medium (default: by --audio-lang)")
 
     ps = sub.add_parser("search", help="Find notes; prints 'note_id<TAB>summary'")
     ps.add_argument("query", help="Anki search query, e.g. 'deck:Spanish front:hola'")
@@ -559,7 +630,8 @@ def main(argv=None) -> None:
                     raise AnkiError(f"--field expects NAME=VALUE, got {f!r}")
                 k, v = f.split("=", 1)
                 named[k] = v
-            audio = [(args.audio_field, tts_audio_html(t, args.audio_lang)) for t in args.audio]
+            audio = [(args.audio_field, tts_audio_html(t, args.audio_lang, args.audio_engine, args.audio_voice))
+                     for t in args.audio]
             res = client.add_card(args.deck, args.notetype, args.values, named, args.tags, audio)
             print(f"added card -> deck {res['deck_id']}, notetype {res['notetype_id']}"
                   + (f", tags '{res['tags']}'" if res["tags"] else ""))
@@ -574,7 +646,8 @@ def main(argv=None) -> None:
                     raise AnkiError(f"--field expects NAME=VALUE, got {f!r}")
                 k, v = f.split("=", 1)
                 named[k] = v
-            audio = [(args.audio_field, tts_audio_html(t, args.audio_lang)) for t in args.audio]
+            audio = [(args.audio_field, tts_audio_html(t, args.audio_lang, args.audio_engine, args.audio_voice))
+                     for t in args.audio]
             res = client.update_card(args.note_id, args.values, named, args.tags, audio)
             print(f"updated note {res['note_id']}"
                   + (f", tags '{res['tags']}'" if res["tags"] else ""))
