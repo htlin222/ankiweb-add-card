@@ -46,6 +46,10 @@ python3 "$SKILL/anki.py" add_card "Q" "A" -f "Extra=a note" -t "tag1 tag2"
 # Omit -d/-n to use the user's last-used deck and note type
 python3 "$SKILL/anki.py" add_card "front" "back"
 
+# Pronunciation: -a embeds a spoken-TTS player in the first field (or --audio-field)
+python3 "$SKILL/anki.py" add_card "tag" "標籤" -a "tag"
+python3 "$SKILL/anki.py" update_card 1234567890 -a "標籤" --audio-lang zh-TW --audio-field Back
+
 # Find existing notes (Anki search syntax) -> 'note_id<TAB>field-summary'
 python3 "$SKILL/anki.py" search "deck:Spanish front:hola"
 
@@ -77,6 +81,9 @@ python3 "$SKILL/anki.py" remove-deck "Spanish::Verbs"
 | `-n, --notetype` | note type name or numeric id; default: last used |
 | `-f, --field NAME=VALUE` | set a field by name; repeatable; overrides positional |
 | `-t, --tags` | space-separated tags |
+| `-a, --audio TEXT` | append a spoken player for TEXT (Google TTS, embedded as a `data:` URI — no media upload needed); repeatable, max 200 chars; also on `update_card` |
+| `--audio-lang` | TTS language: `en` (default), `en-GB`, `ja`, `zh-TW`, … |
+| `--audio-field NAME` | field to append the audio to (default: first field) |
 
 ### Editing an existing card (`search` + `update_card`)
 

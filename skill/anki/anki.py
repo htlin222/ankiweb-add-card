@@ -13,9 +13,11 @@ directly (no browser). Pure stdlib — no third-party deps, so `python3 anki.py
 from __future__ import annotations
 
 import argparse
+import base64
 import gzip
 import http.cookiejar
 import json
+import re
 import sys
 import tempfile
 import time
@@ -109,6 +111,47 @@ def _as_str(v: bytes) -> str:
 # --------------------------------------------------------------------------- #
 class AnkiError(Exception):
     pass
+
+
+# --------------------------------------------------------------------------- #
+# Audio: AnkiWeb has no media upload, so speech is fetched from Google
+# Translate's TTS and embedded in the field as a data: URI <audio> player.
+# --------------------------------------------------------------------------- #
+TTS_URL = "https://translate.google.com/translate_tts"
+TTS_MAX_CHARS = 200  # the endpoint rejects longer text
+
+
+def tts_audio_html(text: str, lang: str = "en") -> str:
+    """Speak `text` in `lang` and return an embeddable <audio controls> tag."""
+    text = text.strip()
+    if not text:
+        raise AnkiError("--audio text is empty")
+    if len(text) > TTS_MAX_CHARS:
+        raise AnkiError(f"--audio text is {len(text)} chars; the TTS limit is {TTS_MAX_CHARS}")
+    url = f"{TTS_URL}?{urllib.parse.urlencode({'ie': 'UTF-8', 'client': 'tw-ob', 'tl': lang, 'q': text})}"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=30) as r:
+            ctype, mp3 = r.headers.get("Content-Type", ""), r.read()
+    except urllib.error.URLError as e:
+        raise AnkiError(f"TTS request failed for {text!r} ({lang}): {e}") from e
+    if not ctype.startswith("audio/") or not mp3:
+        raise AnkiError(f"TTS returned {ctype or 'no content type'} instead of audio for {text!r}")
+    return f'<audio controls src="data:audio/mpeg;base64,{base64.b64encode(mp3).decode()}"></audio>'
+
+
+def _append_audio(field_names: list[str], field_vals: list[str], audio) -> None:
+    """Append each (field name or None, audio html) to its field; None = first field."""
+    for field, html in audio or ():
+        if field and field not in field_names:
+            raise AnkiError(f"unknown --audio-field '{field}'; available: {field_names}")
+        idx = field_names.index(field) if field else 0
+        field_vals[idx] += html
+
+
+def _short(value: str) -> str:
+    """Abbreviate embedded data: URIs for display."""
+    return re.sub(r"(data:[\w/+-]+;base64,)([A-Za-z0-9+/=]+)",
+                  lambda m: f"{m.group(1)}…{len(m.group(2)) * 3 // 4 // 1024 + 1}KB", value)
 
 
 # --------------------------------------------------------------------------- #
@@ -296,7 +339,7 @@ class AnkiWebClient:
         d = pb_decode(self._svc(ANKIUSER, "/svc/editor/get-notetype-fields", pb_int(1, notetype_id)))
         return self._field_names(d.get(1, []))
 
-    def add_card(self, deck=None, notetype=None, values=(), named=None, tags="") -> dict:
+    def add_card(self, deck=None, notetype=None, values=(), named=None, tags="", audio=None) -> dict:
         info = self.get_info_for_adding()
         deck_id = self._resolve(deck, info["decks"], "deck") if deck else info["current_deck_id"]
         notetype_id = (
@@ -325,6 +368,7 @@ class AnkiWebClient:
             if k not in field_names:
                 raise AnkiError(f"unknown field '{k}'; available: {field_names}")
             field_vals[field_names.index(k)] = v
+        _append_audio(field_names, field_vals, audio)
         if not any(field_vals):
             raise AnkiError("refusing to add an empty note (no field values given)")
 
@@ -363,7 +407,7 @@ class AnkiWebClient:
             "tags": _as_str(d.get(3, [b""])[0]),              # space-separated tags
         }
 
-    def update_card(self, note_id, values=(), named=None, tags=None) -> dict:
+    def update_card(self, note_id, values=(), named=None, tags=None, audio=None) -> dict:
         """Edit an existing note in place. Unspecified fields keep their current
         value; tags are preserved unless `tags` is given. Uses the same
         add-or-update endpoint as add_card but in *edit mode* (field 4 = note id),
@@ -382,6 +426,7 @@ class AnkiWebClient:
             if k not in field_names:
                 raise AnkiError(f"unknown field '{k}'; available: {field_names}")
             field_vals[field_names.index(k)] = v
+        _append_audio(field_names, field_vals, audio)
         out_tags = info["tags"] if tags is None else tags
 
         body = b"".join(pb_string(1, fv) for fv in field_vals)
@@ -452,6 +497,12 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("-f", "--field", action="append", default=[], metavar="NAME=VALUE",
                     help="Set a field by name (repeatable; overrides positional)")
     pa.add_argument("-t", "--tags", default="", help="Space-separated tags")
+    pa.add_argument("-a", "--audio", action="append", default=[], metavar="TEXT",
+                    help="Append a spoken-TTS player for TEXT (repeatable)")
+    pa.add_argument("--audio-lang", default="en",
+                    help="TTS language code, e.g. en, en-GB, ja, zh-TW (default: en)")
+    pa.add_argument("--audio-field", metavar="NAME",
+                    help="Field to append audio to (default: the first field)")
 
     pu = sub.add_parser("update_card", help="Edit an existing note in place (no duplicate)")
     pu.add_argument("note_id", help="Note id (from `search`, or the /edit/<id> URL)")
@@ -462,6 +513,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Set one field by name (repeatable; best for editing a single field)")
     pu.add_argument("-t", "--tags", default=None,
                     help="Replace tags (default: keep the note's existing tags)")
+    pu.add_argument("-a", "--audio", action="append", default=[], metavar="TEXT",
+                    help="Append a spoken-TTS player for TEXT (repeatable)")
+    pu.add_argument("--audio-lang", default="en",
+                    help="TTS language code, e.g. en, en-GB, ja, zh-TW (default: en)")
+    pu.add_argument("--audio-field", metavar="NAME",
+                    help="Field to append audio to (default: the first field)")
 
     ps = sub.add_parser("search", help="Find notes; prints 'note_id<TAB>summary'")
     ps.add_argument("query", help="Anki search query, e.g. 'deck:Spanish front:hola'")
@@ -502,11 +559,12 @@ def main(argv=None) -> None:
                     raise AnkiError(f"--field expects NAME=VALUE, got {f!r}")
                 k, v = f.split("=", 1)
                 named[k] = v
-            res = client.add_card(args.deck, args.notetype, args.values, named, args.tags)
+            audio = [(args.audio_field, tts_audio_html(t, args.audio_lang)) for t in args.audio]
+            res = client.add_card(args.deck, args.notetype, args.values, named, args.tags, audio)
             print(f"added card -> deck {res['deck_id']}, notetype {res['notetype_id']}"
                   + (f", tags '{res['tags']}'" if res["tags"] else ""))
             for k, v in res["fields"].items():
-                print(f"  {k}: {v!r}")
+                print(f"  {k}: {_short(v)!r}")
         elif args.cmd == "update_card":
             if not str(args.note_id).isdigit():
                 raise AnkiError(f"note_id must be numeric, got {args.note_id!r}")
@@ -516,11 +574,12 @@ def main(argv=None) -> None:
                     raise AnkiError(f"--field expects NAME=VALUE, got {f!r}")
                 k, v = f.split("=", 1)
                 named[k] = v
-            res = client.update_card(args.note_id, args.values, named, args.tags)
+            audio = [(args.audio_field, tts_audio_html(t, args.audio_lang)) for t in args.audio]
+            res = client.update_card(args.note_id, args.values, named, args.tags, audio)
             print(f"updated note {res['note_id']}"
                   + (f", tags '{res['tags']}'" if res["tags"] else ""))
             for k, v in res["fields"].items():
-                print(f"  {k}: {v!r}")
+                print(f"  {k}: {_short(v)!r}")
         elif args.cmd == "search":
             rows = client.search(args.query)
             for nid, summary in rows:
