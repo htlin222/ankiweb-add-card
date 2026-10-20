@@ -21,6 +21,11 @@ official API. Also ships as a Claude skill (`make build` → `dist/anki.skill`).
   local Piper (`--audio-engine piper`, ffmpeg → mp3 when available, else WAV) —
   and embeds it as a `data:` URI `<audio>` tag — AnkiWeb has no media-upload endpoint, and
   `[sound:]` only plays files already synced from a desktop/mobile client.
+- `--type-answer` (add/update) embeds a JS type-in widget (`TYPE_IN_*`): AnkiWeb's
+  reviewer deletes `[[type:…]]`, so `{{type:Field}}` never shows a box there.
+  The widget carries the typed text front→back via sessionStorage and detects
+  the back by `#answer` or AnkiWeb's "Again" button (checked after a 50 ms tick,
+  since AnkiWeb runs card scripts before swapping in the answer buttons).
 
 AnkiWeb splits its API across two domains, each with its own session cookie from
 one login:

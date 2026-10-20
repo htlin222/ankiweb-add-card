@@ -72,6 +72,9 @@ uv run anki.py add_card "tag" "標籤" -a "tag"
 uv run anki.py update_card 1234567890 -a "標籤" --audio-lang zh-TW --audio-field Back
 uv run anki.py add_card "tag" "標籤" -a "tag" --audio-engine piper   # local, offline
 
+# Type-in answer (works on AnkiWeb, which ignores {{type:}})
+uv run anki.py add_card "FAB type?" "acute promyelocytic leukemia" --type-answer "acute promyelocytic leukemia|APL"
+
 # Discovery
 uv run anki.py list-decks          # id<TAB>name
 uv run anki.py list-notetypes
@@ -94,6 +97,8 @@ uv run anki.py login               # force re-login, refresh cached session
 | `--audio-field NAME` | field to append the audio to (default: first field) |
 | `--audio-engine` | `google` (online, default, max 200 chars) or `piper` (local [Piper](https://github.com/rhasspy/piper) neural TTS: `pip install piper-tts`; voices auto-download to `$PIPER_DATA_DIR`, default `~/.local/share/piper`). Set `ANKI_AUDIO_ENGINE=piper` to make it the default |
 | `--audio-voice` | Piper voice (default by language: `en_US-lessac-medium`, `en_GB-alba-medium`, `zh_CN-huayan-medium`); needed for other languages, e.g. `de_DE-thorsten-medium` |
+| `--type-answer ANSWER` | append a type-in box checked against ANSWER (`\|` separates accepted alternatives, e.g. `"APL\|acute promyelocytic leukemia"`). AnkiWeb strips `{{type:Field}}`, so this is a self-contained JS widget: type on the front, Enter reveals, the back shows a letter-by-letter diff (case-insensitive). Also on `update_card` |
+| `--type-field NAME` | field to append the type-in box to (default: first field) |
 
 Names are resolved against your collection; an unknown name produces a
 "did you mean …?" suggestion. Numeric arguments are treated as raw ids.

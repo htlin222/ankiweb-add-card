@@ -198,17 +198,120 @@ def tts_audio_html(text: str, lang: str = "en", engine: str = "google", voice: s
     return f'<audio controls src="data:{mime};base64,{base64.b64encode(data).decode()}"></audio>'
 
 
-def _append_audio(field_names: list[str], field_vals: list[str], audio) -> None:
-    """Append each (field name or None, audio html) to its field; None = first field."""
-    for field, html in audio or ():
+def _append_html(field_names: list[str], field_vals: list[str], append) -> None:
+    """Append each (field name or None, html) to its field; None = first field."""
+    for field, html in append or ():
         if field and field not in field_names:
-            raise AnkiError(f"unknown --audio-field '{field}'; available: {field_names}")
+            raise AnkiError(f"unknown field '{field}'; available: {field_names}")
         idx = field_names.index(field) if field else 0
         field_vals[idx] += html
 
 
+# --------------------------------------------------------------------------- #
+# Type-in answers: AnkiWeb strips {{type:Field}} ([[type:…]]) from cards, so
+# this embeds a self-contained input + diff widget instead. Type on the front,
+# Enter reveals the answer; the back shows a letter-by-letter comparison.
+# Works anywhere card JS runs (AnkiWeb, desktop); the typed text is carried
+# from front to back in sessionStorage.
+# --------------------------------------------------------------------------- #
+TYPE_IN_CSS = """<style>
+/* mid-tone colours: readable on light and dark cards alike, since a card may or may not follow dark mode */
+.tyin { margin: .8em 0; --ty-ok: #2e9d55; --ty-bad: #e0453a; --ty-miss: #8a8a94; --ty-line: #8a8a94; }
+.tyin input { width: 100%; box-sizing: border-box; font: inherit; color: inherit; background: transparent;
+  padding: .4em .6em; border: 2px solid var(--ty-line); border-radius: 6px; }
+.tyin input:focus { outline: none; border-color: var(--ty-ok); }
+.tyin .res { margin-top: .5em; font-family: ui-monospace, Menlo, Consolas, monospace; line-height: 1.6; }
+.tyin .ok { color: var(--ty-ok); }
+.tyin .bad { color: var(--ty-bad); text-decoration: line-through; }
+.tyin .miss { color: var(--ty-miss); text-decoration: underline; }
+.tyin .verdict { font-family: inherit; font-weight: 700; margin-right: .4em; }
+</style>"""
+
+TYPE_IN_JS = """<script>
+(function () {
+  function dec(b) { return decodeURIComponent(escape(atob(b))); }
+  function tidy(s) { return s.normalize("NFKC").replace(/\\s+/g, " ").trim().replace(/[.,;:!?\\u3002\\uff0c\\uff1b\\uff1a\\uff01\\uff1f]+$/, ""); }
+  function same(a, b) { return a.toLowerCase() === b.toLowerCase(); }
+  function esc(s) { return s.replace(/[&<>"]/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]; }); }
+  function lcs(a, b) {
+    var L = [], i, j;
+    for (i = 0; i <= a.length; i++) { L.push([]); for (j = 0; j <= b.length; j++) L[i].push(0); }
+    for (i = a.length - 1; i >= 0; i--) for (j = b.length - 1; j >= 0; j--)
+      L[i][j] = same(a[i], b[j]) ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    return L;
+  }
+  function diff(a, b) {           // a = typed, b = expected
+    var L = lcs(a, b), i = 0, j = 0, out = "";
+    function span(c, t) { return '<span class="' + c + '">' + esc(t) + "</span>"; }
+    while (i < a.length && j < b.length) {
+      if (same(a[i], b[j])) { out += span("ok", a[i]); i++; j++; }
+      else if (L[i + 1][j] >= L[i][j + 1]) out += span("bad", a[i++]);
+      else out += span("miss", b[j++]);
+    }
+    while (i < a.length) out += span("bad", a[i++]);
+    while (j < b.length) out += span("miss", b[j++]);
+    return out;
+  }
+  function store(k, v) { try { v === null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch (e) { (window.__tyin = window.__tyin || {})[k] = v; } }
+  function load(k) { try { return sessionStorage.getItem(k); } catch (e) { return (window.__tyin || {})[k] || null; } }
+  function reveal() {
+    if (typeof pycmd === "function") { pycmd("ans"); return; }        // desktop Anki
+    var btns = document.querySelectorAll("button");
+    for (var i = 0; i < btns.length; i++)
+      if (/show answer|\\u986f\\u793a\\u7b54\\u6848/i.test(btns[i].textContent)) { btns[i].click(); return; }
+  }
+  function isBack() {             // desktop/most templates: <hr id=answer>; AnkiWeb: rating buttons
+    if (document.getElementById("answer")) return true;
+    var btns = document.querySelectorAll("button");
+    for (var i = 0; i < btns.length; i++) if (/^(again|\\u91cd\\u4f86)$/i.test(btns[i].textContent.trim())) return true;
+    return false;
+  }
+  setTimeout(function () {        // AnkiWeb runs card scripts before it swaps in the answer buttons
+    var back = isBack();
+    document.querySelectorAll(".tyin:not([data-init])").forEach(function (el) {
+      el.setAttribute("data-init", "1");
+      var alts = dec(el.dataset.ans).split("|").map(tidy).filter(Boolean);
+      var key = "tyin:" + el.dataset.ans, input = el.querySelector("input"), res = el.querySelector(".res");
+      ["keydown", "keyup", "keypress"].forEach(function (t) {
+        input.addEventListener(t, function (e) { e.stopPropagation(); });   // keep site shortcuts out
+      });
+      if (!back) {
+        store(key, null);
+        input.addEventListener("input", function () { store(key, input.value); });
+        input.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); reveal(); } });
+        input.focus();
+        return;
+      }
+      var typed = tidy(load(key) || "");
+      input.value = typed; input.readOnly = true;
+      var best = alts[0], score = -1;
+      alts.forEach(function (a) { var s = lcs(typed, a)[0][0] / Math.max(a.length, typed.length, 1); if (s > score) { score = s; best = a; } });
+      var right = alts.some(function (a) { return a.toLowerCase() === typed.toLowerCase(); });
+      res.innerHTML = !typed ? '<span class="verdict miss">\\u672a\\u4f5c\\u7b54</span>' + esc(best)
+        : right ? '<span class="verdict ok">\\u2713</span>' + diff(typed, best)
+        : '<span class="verdict bad">\\u2717</span>' + diff(typed, best);
+    });
+  }, 50);
+})();
+</script>"""
+
+
+def type_in_html(answer: str) -> str:
+    """Embeddable type-in widget for `answer` ('|' separates accepted alternatives)."""
+    answer = answer.strip()
+    if not answer:
+        raise AnkiError("--type-answer is empty")
+    b64 = base64.b64encode(answer.encode()).decode()  # keeps the answer out of the visible front
+    return (f'{TYPE_IN_CSS}<div class="tyin" data-ans="{b64}">'
+            f'<input type="text" placeholder="Type answer, Enter to check" autocomplete="off" '
+            f'autocapitalize="off" autocorrect="off" spellcheck="false"><div class="res"></div></div>'
+            f'{TYPE_IN_JS}')
+
+
 def _short(value: str) -> str:
-    """Abbreviate embedded data: URIs for display."""
+    """Abbreviate embedded data: URIs and type-in widgets for display."""
+    value = re.sub(r'<style>[^<]*?\.tyin [^<]*</style><div class="tyin" data-ans="([^"]*)">.*?</script>',
+                   lambda m: f"[type-in: {base64.b64decode(m.group(1)).decode()}]", value, flags=re.S)
     return re.sub(r"(data:[\w/+-]+;base64,)([A-Za-z0-9+/=]+)",
                   lambda m: f"{m.group(1)}…{len(m.group(2)) * 3 // 4 // 1024 + 1}KB", value)
 
@@ -398,7 +501,7 @@ class AnkiWebClient:
         d = pb_decode(self._svc(ANKIUSER, "/svc/editor/get-notetype-fields", pb_int(1, notetype_id)))
         return self._field_names(d.get(1, []))
 
-    def add_card(self, deck=None, notetype=None, values=(), named=None, tags="", audio=None) -> dict:
+    def add_card(self, deck=None, notetype=None, values=(), named=None, tags="", append=None) -> dict:
         info = self.get_info_for_adding()
         deck_id = self._resolve(deck, info["decks"], "deck") if deck else info["current_deck_id"]
         notetype_id = (
@@ -427,7 +530,7 @@ class AnkiWebClient:
             if k not in field_names:
                 raise AnkiError(f"unknown field '{k}'; available: {field_names}")
             field_vals[field_names.index(k)] = v
-        _append_audio(field_names, field_vals, audio)
+        _append_html(field_names, field_vals, append)
         if not any(field_vals):
             raise AnkiError("refusing to add an empty note (no field values given)")
 
@@ -466,7 +569,7 @@ class AnkiWebClient:
             "tags": _as_str(d.get(3, [b""])[0]),              # space-separated tags
         }
 
-    def update_card(self, note_id, values=(), named=None, tags=None, audio=None) -> dict:
+    def update_card(self, note_id, values=(), named=None, tags=None, append=None) -> dict:
         """Edit an existing note in place. Unspecified fields keep their current
         value; tags are preserved unless `tags` is given. Uses the same
         add-or-update endpoint as add_card but in *edit mode* (field 4 = note id),
@@ -485,7 +588,7 @@ class AnkiWebClient:
             if k not in field_names:
                 raise AnkiError(f"unknown field '{k}'; available: {field_names}")
             field_vals[field_names.index(k)] = v
-        _append_audio(field_names, field_vals, audio)
+        _append_html(field_names, field_vals, append)
         out_tags = info["tags"] if tags is None else tags
 
         body = b"".join(pb_string(1, fv) for fv in field_vals)
@@ -568,6 +671,11 @@ def build_parser() -> argparse.ArgumentParser:
                          "$ANKI_AUDIO_ENGINE or google")
     pa.add_argument("--audio-voice", metavar="VOICE",
                     help="Piper voice, e.g. en_GB-alba-medium (default: by --audio-lang)")
+    pa.add_argument("--type-answer", metavar="ANSWER",
+                    help="Append a type-in box checked against ANSWER ('|' separates "
+                         "accepted alternatives); works on AnkiWeb, unlike {{type:}}")
+    pa.add_argument("--type-field", metavar="NAME",
+                    help="Field to append the type-in box to (default: the first field)")
 
     pu = sub.add_parser("update_card", help="Edit an existing note in place (no duplicate)")
     pu.add_argument("note_id", help="Note id (from `search`, or the /edit/<id> URL)")
@@ -590,6 +698,11 @@ def build_parser() -> argparse.ArgumentParser:
                          "$ANKI_AUDIO_ENGINE or google")
     pu.add_argument("--audio-voice", metavar="VOICE",
                     help="Piper voice, e.g. en_GB-alba-medium (default: by --audio-lang)")
+    pu.add_argument("--type-answer", metavar="ANSWER",
+                    help="Append a type-in box checked against ANSWER ('|' separates "
+                         "accepted alternatives); works on AnkiWeb, unlike {{type:}}")
+    pu.add_argument("--type-field", metavar="NAME",
+                    help="Field to append the type-in box to (default: the first field)")
 
     ps = sub.add_parser("search", help="Find notes; prints 'note_id<TAB>summary'")
     ps.add_argument("query", help="Anki search query, e.g. 'deck:Spanish front:hola'")
@@ -630,9 +743,11 @@ def main(argv=None) -> None:
                     raise AnkiError(f"--field expects NAME=VALUE, got {f!r}")
                 k, v = f.split("=", 1)
                 named[k] = v
-            audio = [(args.audio_field, tts_audio_html(t, args.audio_lang, args.audio_engine, args.audio_voice))
-                     for t in args.audio]
-            res = client.add_card(args.deck, args.notetype, args.values, named, args.tags, audio)
+            append = [(args.audio_field, tts_audio_html(t, args.audio_lang, args.audio_engine, args.audio_voice))
+                      for t in args.audio]
+            if args.type_answer:
+                append.append((args.type_field, type_in_html(args.type_answer)))
+            res = client.add_card(args.deck, args.notetype, args.values, named, args.tags, append)
             print(f"added card -> deck {res['deck_id']}, notetype {res['notetype_id']}"
                   + (f", tags '{res['tags']}'" if res["tags"] else ""))
             for k, v in res["fields"].items():
@@ -646,9 +761,11 @@ def main(argv=None) -> None:
                     raise AnkiError(f"--field expects NAME=VALUE, got {f!r}")
                 k, v = f.split("=", 1)
                 named[k] = v
-            audio = [(args.audio_field, tts_audio_html(t, args.audio_lang, args.audio_engine, args.audio_voice))
-                     for t in args.audio]
-            res = client.update_card(args.note_id, args.values, named, args.tags, audio)
+            append = [(args.audio_field, tts_audio_html(t, args.audio_lang, args.audio_engine, args.audio_voice))
+                      for t in args.audio]
+            if args.type_answer:
+                append.append((args.type_field, type_in_html(args.type_answer)))
+            res = client.update_card(args.note_id, args.values, named, args.tags, append)
             print(f"updated note {res['note_id']}"
                   + (f", tags '{res['tags']}'" if res["tags"] else ""))
             for k, v in res["fields"].items():

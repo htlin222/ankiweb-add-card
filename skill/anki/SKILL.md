@@ -51,6 +51,10 @@ python3 "$SKILL/anki.py" add_card "tag" "標籤" -a "tag"
 python3 "$SKILL/anki.py" update_card 1234567890 -a "標籤" --audio-lang zh-TW --audio-field Back
 python3 "$SKILL/anki.py" add_card "tag" "標籤" -a "tag" --audio-engine piper   # local, offline
 
+# Type-in answer box ('|' = accepted alternatives). AnkiWeb ignores {{type:}};
+# this embedded widget works there. Put it in the question field:
+python3 "$SKILL/anki.py" add_card "FAB type?" "acute promyelocytic leukemia" --type-answer "acute promyelocytic leukemia|APL"
+
 # Find existing notes (Anki search syntax) -> 'note_id<TAB>field-summary'
 python3 "$SKILL/anki.py" search "deck:Spanish front:hola"
 
@@ -87,6 +91,8 @@ python3 "$SKILL/anki.py" remove-deck "Spanish::Verbs"
 | `--audio-field NAME` | field to append the audio to (default: first field) |
 | `--audio-engine` | `google` (online, default, max 200 chars) or `piper` (local [Piper](https://github.com/rhasspy/piper) neural TTS: `pip install piper-tts`; voices auto-download to `$PIPER_DATA_DIR`, default `~/.local/share/piper`). Set `ANKI_AUDIO_ENGINE=piper` to make it the default |
 | `--audio-voice` | Piper voice (default by language: `en_US-lessac-medium`, `en_GB-alba-medium`, `zh_CN-huayan-medium`); needed for other languages, e.g. `de_DE-thorsten-medium` |
+| `--type-answer ANSWER` | append a type-in box checked against ANSWER (`\|` separates accepted alternatives, e.g. `"APL\|acute promyelocytic leukemia"`). AnkiWeb strips `{{type:Field}}`, so this is a self-contained JS widget: type on the front, Enter reveals, the back shows a letter-by-letter diff (case-insensitive). Also on `update_card` |
+| `--type-field NAME` | field to append the type-in box to (default: first field) |
 
 ### Editing an existing card (`search` + `update_card`)
 
