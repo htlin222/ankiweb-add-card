@@ -157,6 +157,33 @@ Rules of thumb when generating cards:
   active recall + spaced repetition only pays off when retrieval is non-trivial
   yet succeeds.
 
+## What renders on AnkiWeb (tested in its study view)
+
+Fields are stored verbatim and injected straight into AnkiWeb's page — no
+iframe or sandbox — so field HTML/CSS/JS runs with the user's session. Only
+put code you wrote there, and scope CSS under a unique class so it can't
+restyle AnkiWeb's own buttons.
+
+| Want | Works on AnkiWeb? | How |
+| --- | --- | --- |
+| CSS, `@keyframes`, transitions | yes | `<style>` in a field, or inline `style=` |
+| JavaScript | yes | inline `<script>`; it runs on both front and back renders |
+| Dark mode | partly | AnkiWeb has no dark theme and never adds `.nightMode`; the page stays white. `@media (prefers-color-scheme: dark)` *does* work inside a card. Support both: tokens on `.card`, swapped under `.nightMode .card, .night_mode .card` **and** the media query |
+| Images | yes, but no upload | `<img src="data:image/png;base64,…">`, inline `<svg>`, external `https://` URLs; files already synced from desktop/mobile load by name from `/study/media/`. The web editor's "images can not be added" alert is client-side only |
+| Audio | yes, but no upload | `--audio` (embedded `data:` mp3). `[sound:x.mp3]` becomes `<audio controls>` but only for files already synced. `{{tts:…}}` is **not** supported |
+| Type-in answers | no (`{{type:}}` is stripped) | `--type-answer` (embedded widget) |
+| Long backs | yes | fold secondary parts in `<details><summary>…</summary>…</details>` |
+
+Gotchas when scripting cards:
+
+- On the answer side AnkiWeb rates the card on keyup of `1`–`4` anywhere on
+  the page; stop propagation from any input you add.
+- Card scripts run *before* AnkiWeb swaps in the answer buttons, so defer any
+  "am I on the back?" check (`setTimeout`); not every template has
+  `<hr id=answer>`.
+- Note type CSS/templates can't be edited through AnkiWeb — only fields. Style
+  changes to a note type have to be pasted in desktop Anki and synced.
+
 ## Usage notes
 
 - **Resolve names, don't guess ids.** Deck and note type arguments accept the

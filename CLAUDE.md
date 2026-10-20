@@ -56,6 +56,17 @@ mode replaces the note's fields, so `update_card` first calls
 `search` posts `/svc/search/search` (`{1: query}`) and gets back repeated
 `{1: note_id, 2: field-summary}`.
 
+What card HTML/CSS/JS/media AnkiWeb actually renders (dark mode, images,
+audio, type-in, keyboard shortcuts) is recorded in `skill/anki/SKILL.md` →
+"What renders on AnkiWeb". `styles/oral-exam/` is the house card style (the
+`01_血專口試快答` deck): CSS tokens for light + dark, `<details>` folding,
+and a JSON → fields generator.
+
+To check how a card really renders, log in and open `ankiuser.net/study` in
+headless Chromium (Playwright, cookies from the session file), clicking the
+throwaway deck on `ankiweb.net/decks`. Viewing doesn't rate cards; only the
+Again/Hard/Good/Easy buttons (or keys 1–4 on the answer side) do.
+
 ## Editing
 
 - **Single source of truth: `skill/anki/anki.py`.** Root `anki.py` is a symlink
