@@ -1,12 +1,14 @@
 ---
 name: anki
 description: >-
-  Create decks and add cards/flashcards to the user's AnkiWeb account from the
-  command line. Bundles a self-contained Python CLI plus the user's AnkiWeb
-  credentials, so no setup is required. Use whenever the user wants to add a
-  flashcard or note to Anki/AnkiWeb, create or remove an Anki deck, or list
-  their existing Anki decks or note types — e.g. "add a card to my Spanish
-  deck", "make an Anki deck called X", "save this as a flashcard".
+  Create, rename and remove decks and add, search and edit cards/flashcards on
+  the user's AnkiWeb account from the command line, including pronunciation
+  audio and type-in answer boxes. Bundles a self-contained Python CLI plus the
+  user's AnkiWeb credentials, so no setup is required. Use whenever the user
+  wants to add or change a flashcard or note in Anki/AnkiWeb, manage Anki
+  decks, or list their decks or note types — e.g. "add a card to my Spanish
+  deck", "make an Anki deck called X", "save this as a flashcard", "fix the
+  answer on that card", "add pronunciation to these words".
 ---
 
 # Anki
@@ -118,7 +120,8 @@ Safety notes:
   blanks the rest of the card.
 - AnkiWeb still has **no single-note delete** — `update_card` cannot remove a
   note, only change its content. To delete, you must `remove-deck` the whole
-  deck (see Testing in CLAUDE.md).
+  deck — so when experimenting, use a throwaway deck (e.g. `_tmp_test`) and
+  remove it afterwards; never add test cards to a real deck.
 
 ## Card design — default to *short question / short answer / context below*
 

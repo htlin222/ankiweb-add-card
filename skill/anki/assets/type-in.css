@@ -1,0 +1,10 @@
+/* mid-tone colours: readable on light and dark cards alike, since a card may or may not follow dark mode */
+.tyin { margin: .8em 0; --ty-ok: #2e9d55; --ty-bad: #e0453a; --ty-miss: #8a8a94; --ty-line: #8a8a94; }
+.tyin input { width: 100%; box-sizing: border-box; font: inherit; color: inherit; background: transparent;
+  padding: .4em .6em; border: 2px solid var(--ty-line); border-radius: 6px; }
+.tyin input:focus { outline: none; border-color: var(--ty-ok); }
+.tyin .res { margin-top: .5em; font-family: ui-monospace, Menlo, Consolas, monospace; line-height: 1.6; }
+.tyin .ok { color: var(--ty-ok); }
+.tyin .bad { color: var(--ty-bad); text-decoration: line-through; }
+.tyin .miss { color: var(--ty-miss); text-decoration: underline; }
+.tyin .verdict { font-family: inherit; font-weight: 700; margin-right: .4em; }

@@ -4,28 +4,44 @@ Guidance for Claude Code (and humans) working in this repo.
 
 ## What this is
 
-A tiny CLI that creates decks and adds cards on **AnkiWeb** by calling its
+A tiny CLI that creates decks and adds/edits cards on **AnkiWeb** by calling its
 internal protobuf `/svc/` endpoints directly — no browser, no AnkiConnect, no
 official API. Also ships as a Claude skill (`make build` → `dist/anki.skill`).
 
-## Architecture (one file)
+## Layout
 
-`skill/anki/anki.py` is the whole program. It:
+| Path | What |
+| --- | --- |
+| `skill/anki/anki.py` | the whole CLI — **single source of truth** (root `anki.py` is a symlink; never edit it) |
+| `skill/anki/assets/` | CSS/JS embedded into card fields (`type-in.css`, `type-in.js`) |
+| `skill/anki/SKILL.md` | skill manifest: commands, card-design rules, **What renders on AnkiWeb** |
+| `tests/` | offline `unittest` suite (`make test`; CI on 3.10 + 3.13) |
+| `styles/oral-exam/` | house card style (`01_血專口試快答`): CSS tokens light+dark, `<details>` folding, JSON → fields generator |
+| `docs/` | background research behind the card-design rules |
 
-- logs in via `.env` creds and caches both domain cookies (`login()`),
-- hand-rolls protobuf encode/decode (`pb_*`, `_varint`) — only the wire types
-  AnkiWeb uses,
-- exposes `create_deck`, `rename-deck`, `add_card`, `update_card`, `search`,
-  `remove-deck`, `list-decks`, `list-notetypes`, `login`.
-- `--audio` (add/update) synthesizes speech — Google Translate TTS (default) or
-  local Piper (`--audio-engine piper`, ffmpeg → mp3 when available, else WAV) —
-  and embeds it as a `data:` URI `<audio>` tag — AnkiWeb has no media-upload endpoint, and
-  `[sound:]` only plays files already synced from a desktop/mobile client.
-- `--type-answer` (add/update) embeds a JS type-in widget (`TYPE_IN_*`): AnkiWeb's
+Everything under `skill/anki/` ships in the skill package, so it must stay
+stdlib-only and resolve files relative to `__file__` (`.env`, `assets/`). The
+session cache lives in the OS temp dir.
+
+## Architecture (`anki.py`, top to bottom)
+
+- **Protobuf codec** — hand-rolled `pb_*` / `_varint` / `pb_decode`, only the
+  wire types AnkiWeb uses.
+- **Audio** (`tts_audio_html`) — Google Translate TTS (default) or local Piper
+  (`--audio-engine piper`; ffmpeg → mp3 when available, else WAV), embedded as a
+  `data:` URI `<audio>`. AnkiWeb has no media-upload endpoint, and `[sound:]`
+  only plays files already synced from a desktop/mobile client.
+- **Type-in** (`type_in_html`) — inlines `assets/type-in.{css,js}`. AnkiWeb's
   reviewer deletes `[[type:…]]`, so `{{type:Field}}` never shows a box there.
-  The widget carries the typed text front→back via sessionStorage and detects
-  the back by `#answer` or AnkiWeb's "Again" button (checked after a 50 ms tick,
-  since AnkiWeb runs card scripts before swapping in the answer buttons).
+  The widget carries the typed text front→back in sessionStorage and detects
+  the back by `#answer` or AnkiWeb's "Again" button, checked after a 50 ms tick
+  because AnkiWeb runs card scripts before it swaps in the answer buttons.
+- **HTTP + client** — stdlib urllib with a cookie jar; `AnkiWebClient` does
+  login, decks, notes, search.
+- **CLI** — `build_parser()` / `main()`; extra HTML (audio, type-in) goes
+  through `_append_html`, and `_short` abbreviates it in printed output.
+
+### Protocol
 
 AnkiWeb splits its API across two domains, each with its own session cookie from
 one login:
@@ -56,45 +72,42 @@ mode replaces the note's fields, so `update_card` first calls
 `search` posts `/svc/search/search` (`{1: query}`) and gets back repeated
 `{1: note_id, 2: field-summary}`.
 
-What card HTML/CSS/JS/media AnkiWeb actually renders (dark mode, images,
-audio, type-in, keyboard shortcuts) is recorded in `skill/anki/SKILL.md` →
-"What renders on AnkiWeb". `styles/oral-exam/` is the house card style (the
-`01_血專口試快答` deck): CSS tokens for light + dark, `<details>` folding,
-and a JSON → fields generator.
-
-To check how a card really renders, log in and open `ankiuser.net/study` in
-headless Chromium (Playwright, cookies from the session file), clicking the
-throwaway deck on `ankiweb.net/decks`. Viewing doesn't rate cards; only the
-Again/Hard/Good/Easy buttons (or keys 1–4 on the answer side) do.
-
-## Editing
-
-- **Single source of truth: `skill/anki/anki.py`.** Root `anki.py` is a symlink
-  to it — never edit the symlink; edit the skill copy.
-- `.env` (creds) and `SESSION_FILE` are resolved relative to the script, so the
-  CLI works from any cwd and when packaged as a skill.
+To find an endpoint, download the SvelteKit chunks (`/_app/immutable/**.mjs`)
+and grep for `"/svc/`. User-facing media routes don't exist (only admin
+`/svc/radmin/*`).
 
 ## Build & run
 
 ```bash
-uv run anki.py list-decks        # run (deps via PEP 723; needs uv)
+python3 anki.py list-decks       # or: uv run anki.py … (stdlib only)
+make test                        # offline unit tests
 make build                       # -> dist/anki.skill (bundles .env)
-make clean
+make preview                     # render styles/oral-exam examples (gitignored output)
 ```
 
-## Testing — read this before adding test cards
+## Testing
 
-The AnkiWeb web API has **no note-delete endpoint** (only `remove-deck`). To
-avoid leaving residue on a real account, always test mutations on a throwaway
-deck and clean up by removing the whole deck:
+**Unit tests** (`tests/`) are offline: network calls are stubbed, and the
+add-or-update request bodies are decoded and checked field by field. Add a test
+with every change to `anki.py`, the assets, or `make_fields.py`.
+
+**Live tests** touch a real account. The AnkiWeb web API has **no note-delete
+endpoint** (only `remove-deck`), so always test mutations on a throwaway deck
+and clean up by removing the whole deck:
 
 ```bash
-uv run anki.py create_deck "_tmp_test"
-uv run anki.py add_card "f" "b" -d "_tmp_test"
-uv run anki.py remove-deck "_tmp_test"     # deletes the deck and its cards
+python3 anki.py create_deck "_tmp_test"
+python3 anki.py add_card "f" "b" -d "_tmp_test"
+python3 anki.py remove-deck "_tmp_test"     # deletes the deck and its cards
 ```
 
 Never add test cards to an existing real deck.
+
+To check how a card really renders, open `ankiuser.net/study` in headless
+Chromium (Playwright, cookies from the session file) by clicking the throwaway
+deck on `ankiweb.net/decks`. Viewing doesn't rate cards; only the
+Again/Hard/Good/Easy buttons (or keys 1–4 on the answer side) do. Record new
+rendering findings in SKILL.md → "What renders on AnkiWeb".
 
 ## Secrets / safety
 

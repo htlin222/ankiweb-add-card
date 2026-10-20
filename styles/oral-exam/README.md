@@ -10,9 +10,9 @@
 | `front.html` / `back.html` | Front / Back template |
 | `make_fields.py` | 從 JSON 產生欄位 HTML；`--add` 直接加卡、`--preview` 產生預覽頁 |
 | `example.json` | 三張真實卡片：短卡、長卡（自動摺疊）、及格線與紅旗 |
-| `preview.html` | 由 `make_fields.py --preview` 產生；左欄跟隨系統主題，右欄是 `.nightMode` |
 
-用瀏覽器打開 `preview.html`，切換系統深淺色即可比對兩種模式。
+在 repo 根目錄執行 `make preview` 會產生 `preview.html`（不進版控）：左欄跟隨系統主題，右欄是 `.nightMode`。
+用瀏覽器打開它、切換系統深淺色即可比對兩種模式。
 
 ## 1. 卡片結構
 
@@ -106,7 +106,7 @@ Tag 慣例：`<年度> <題號> <領域> 口試快答`，例如 `110 110-001 凝
 # 預覽（輸出 HTML，不動帳號）
 python3 styles/oral-exam/make_fields.py styles/oral-exam/example.json
 
-# 產生預覽頁
+# 產生預覽頁（= make preview）
 python3 styles/oral-exam/make_fields.py styles/oral-exam/example.json --preview styles/oral-exam/preview.html
 
 # 加進牌組（用 repo 根目錄的 anki.py，note type 固定為「血專口試快答 (Basic)」）

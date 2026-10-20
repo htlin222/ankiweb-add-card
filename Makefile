@@ -1,5 +1,5 @@
 # Build the distributable Claude skill package (dist/anki.skill).
-# The package bundles skill/anki/{SKILL.md,anki.py,.env}; .env carries the
+# The package bundles skill/anki/{SKILL.md,anki.py,assets/,.env}; .env carries the
 # AnkiWeb credentials, so dist/ and *.skill are gitignored.
 
 SKILL := anki
@@ -10,7 +10,7 @@ SKILLS_DIR := $(HOME)/.claude/skills
 # Absolute path to this repo's skill source (single source of truth).
 SKILL_SRC  := $(abspath skill/$(SKILL))
 
-.PHONY: build clean link unlink
+.PHONY: build clean link unlink test preview
 
 build: | $(DIST)
 	@rm -f $(DIST)/$(SKILL).skill
@@ -20,6 +20,15 @@ build: | $(DIST)
 
 $(DIST):
 	@mkdir -p $(DIST)
+
+# Offline unit tests (stdlib unittest; no AnkiWeb account or network needed).
+test:
+	@python3 -m unittest discover -s tests -v
+
+# Render the oral-exam style's example cards (light + dark) to an HTML page.
+preview:
+	@python3 styles/oral-exam/make_fields.py styles/oral-exam/example.json \
+		--preview styles/oral-exam/preview.html
 
 clean:
 	@rm -rf $(DIST)

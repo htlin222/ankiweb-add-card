@@ -214,86 +214,7 @@ def _append_html(field_names: list[str], field_vals: list[str], append) -> None:
 # Works anywhere card JS runs (AnkiWeb, desktop); the typed text is carried
 # from front to back in sessionStorage.
 # --------------------------------------------------------------------------- #
-TYPE_IN_CSS = """<style>
-/* mid-tone colours: readable on light and dark cards alike, since a card may or may not follow dark mode */
-.tyin { margin: .8em 0; --ty-ok: #2e9d55; --ty-bad: #e0453a; --ty-miss: #8a8a94; --ty-line: #8a8a94; }
-.tyin input { width: 100%; box-sizing: border-box; font: inherit; color: inherit; background: transparent;
-  padding: .4em .6em; border: 2px solid var(--ty-line); border-radius: 6px; }
-.tyin input:focus { outline: none; border-color: var(--ty-ok); }
-.tyin .res { margin-top: .5em; font-family: ui-monospace, Menlo, Consolas, monospace; line-height: 1.6; }
-.tyin .ok { color: var(--ty-ok); }
-.tyin .bad { color: var(--ty-bad); text-decoration: line-through; }
-.tyin .miss { color: var(--ty-miss); text-decoration: underline; }
-.tyin .verdict { font-family: inherit; font-weight: 700; margin-right: .4em; }
-</style>"""
-
-TYPE_IN_JS = """<script>
-(function () {
-  function dec(b) { return decodeURIComponent(escape(atob(b))); }
-  function tidy(s) { return s.normalize("NFKC").replace(/\\s+/g, " ").trim().replace(/[.,;:!?\\u3002\\uff0c\\uff1b\\uff1a\\uff01\\uff1f]+$/, ""); }
-  function same(a, b) { return a.toLowerCase() === b.toLowerCase(); }
-  function esc(s) { return s.replace(/[&<>"]/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]; }); }
-  function lcs(a, b) {
-    var L = [], i, j;
-    for (i = 0; i <= a.length; i++) { L.push([]); for (j = 0; j <= b.length; j++) L[i].push(0); }
-    for (i = a.length - 1; i >= 0; i--) for (j = b.length - 1; j >= 0; j--)
-      L[i][j] = same(a[i], b[j]) ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
-    return L;
-  }
-  function diff(a, b) {           // a = typed, b = expected
-    var L = lcs(a, b), i = 0, j = 0, out = "";
-    function span(c, t) { return '<span class="' + c + '">' + esc(t) + "</span>"; }
-    while (i < a.length && j < b.length) {
-      if (same(a[i], b[j])) { out += span("ok", a[i]); i++; j++; }
-      else if (L[i + 1][j] >= L[i][j + 1]) out += span("bad", a[i++]);
-      else out += span("miss", b[j++]);
-    }
-    while (i < a.length) out += span("bad", a[i++]);
-    while (j < b.length) out += span("miss", b[j++]);
-    return out;
-  }
-  function store(k, v) { try { v === null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch (e) { (window.__tyin = window.__tyin || {})[k] = v; } }
-  function load(k) { try { return sessionStorage.getItem(k); } catch (e) { return (window.__tyin || {})[k] || null; } }
-  function reveal() {
-    if (typeof pycmd === "function") { pycmd("ans"); return; }        // desktop Anki
-    var btns = document.querySelectorAll("button");
-    for (var i = 0; i < btns.length; i++)
-      if (/show answer|\\u986f\\u793a\\u7b54\\u6848/i.test(btns[i].textContent)) { btns[i].click(); return; }
-  }
-  function isBack() {             // desktop/most templates: <hr id=answer>; AnkiWeb: rating buttons
-    if (document.getElementById("answer")) return true;
-    var btns = document.querySelectorAll("button");
-    for (var i = 0; i < btns.length; i++) if (/^(again|\\u91cd\\u4f86)$/i.test(btns[i].textContent.trim())) return true;
-    return false;
-  }
-  setTimeout(function () {        // AnkiWeb runs card scripts before it swaps in the answer buttons
-    var back = isBack();
-    document.querySelectorAll(".tyin:not([data-init])").forEach(function (el) {
-      el.setAttribute("data-init", "1");
-      var alts = dec(el.dataset.ans).split("|").map(tidy).filter(Boolean);
-      var key = "tyin:" + el.dataset.ans, input = el.querySelector("input"), res = el.querySelector(".res");
-      ["keydown", "keyup", "keypress"].forEach(function (t) {
-        input.addEventListener(t, function (e) { e.stopPropagation(); });   // keep site shortcuts out
-      });
-      if (!back) {
-        store(key, null);
-        input.addEventListener("input", function () { store(key, input.value); });
-        input.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); reveal(); } });
-        input.focus();
-        return;
-      }
-      var typed = tidy(load(key) || "");
-      input.value = typed; input.readOnly = true;
-      var best = alts[0], score = -1;
-      alts.forEach(function (a) { var s = lcs(typed, a)[0][0] / Math.max(a.length, typed.length, 1); if (s > score) { score = s; best = a; } });
-      var right = alts.some(function (a) { return a.toLowerCase() === typed.toLowerCase(); });
-      res.innerHTML = !typed ? '<span class="verdict miss">\\u672a\\u4f5c\\u7b54</span>' + esc(best)
-        : right ? '<span class="verdict ok">\\u2713</span>' + diff(typed, best)
-        : '<span class="verdict bad">\\u2717</span>' + diff(typed, best);
-    });
-  }, 50);
-})();
-</script>"""
+ASSETS = Path(__file__).resolve().parent / "assets"
 
 
 def type_in_html(answer: str) -> str:
@@ -302,10 +223,13 @@ def type_in_html(answer: str) -> str:
     if not answer:
         raise AnkiError("--type-answer is empty")
     b64 = base64.b64encode(answer.encode()).decode()  # keeps the answer out of the visible front
-    return (f'{TYPE_IN_CSS}<div class="tyin" data-ans="{b64}">'
+    css = (ASSETS / "type-in.css").read_text()
+    js = (ASSETS / "type-in.js").read_text()
+    js = js[js.index("(function"):]  # drop the file's header comment; it'd ride along in every card
+    return (f'<style>\n{css}</style><div class="tyin" data-ans="{b64}">'
             f'<input type="text" placeholder="Type answer, Enter to check" autocomplete="off" '
             f'autocapitalize="off" autocorrect="off" spellcheck="false"><div class="res"></div></div>'
-            f'{TYPE_IN_JS}')
+            f'<script>\n{js}</script>')
 
 
 def _short(value: str) -> str:

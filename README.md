@@ -1,135 +1,138 @@
 # ankiweb-cli
 
+[![test](https://github.com/htlin222/ankiweb-add-card/actions/workflows/test.yml/badge.svg)](https://github.com/htlin222/ankiweb-add-card/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
-[![Run with uv](https://img.shields.io/badge/run%20with-uv-DE5FE9.svg)](https://docs.astral.sh/uv/)
 ![Dependencies](https://img.shields.io/badge/deps-none%20(stdlib)-success.svg)
 ![Anki](https://img.shields.io/badge/unofficial-not%20affiliated%20with%20Anki-lightgrey.svg)
 
-A tiny, dependency-free CLI for **AnkiWeb** that creates decks and adds cards
-directly through AnkiWeb's internal protobuf `/svc/` endpoints — no browser, no
-automation framework, no anti-bot bypass needed.
+A tiny, dependency-free CLI for **AnkiWeb**: create, rename and remove decks;
+add, search and edit cards — directly through AnkiWeb's internal protobuf
+`/svc/` endpoints. No browser, no AnkiConnect, no desktop app.
 
-It logs in once with your credentials, caches both session cookies, and speaks
-the same wire protocol the AnkiWeb web app uses.
+It also makes cards richer than the AnkiWeb editor allows:
 
-## How it works
+- **Pronunciation** (`--audio`) — TTS embedded in the card, from Google or a
+  local [Piper](https://github.com/rhasspy/piper) voice. AnkiWeb has no media
+  upload; this needs none.
+- **Type-in answers** (`--type-answer`) — AnkiWeb silently drops
+  `{{type:Field}}`; this embeds a working input with a letter-by-letter diff.
+- **Any HTML/CSS/JS** in fields — tested on AnkiWeb, including dark mode,
+  images without upload, and `<details>` folding. See
+  [What renders on AnkiWeb](skill/anki/SKILL.md#what-renders-on-ankiweb-tested-in-its-study-view).
 
-AnkiWeb splits its API across two domains, each with its own session cookie
-(same login, different `c` claim):
-
-| Operation | Domain | Cookie |
-| --- | --- | --- |
-| add / list cards & notetypes | `ankiuser.net` | `c:2` |
-| create / list / remove decks | `ankiweb.net` | `c:1` |
-
-A single login obtains both:
-
-1. `POST ankiweb.net/svc/account/login` `{username, password}` → `ankiweb.net`
-   cookie + an `ankiuser-login` token.
-2. `GET ankiuser.net/account/ankiuser-login?t=<token>` → `ankiuser.net` cookie.
-
-Both cookies are cached to a session file in the OS temp dir and reused until
-they expire (auto-relogin on `403`). Requests and responses are length-delimited
-protobuf (`Content-Type: application/octet-stream`), encoded/decoded by a small
-hand-rolled codec in `anki.py`.
+Ships as a Claude skill too, so an agent can manage your cards.
 
 ## Setup
 
-No dependencies — the CLI is pure Python stdlib, so `python3 anki.py …` runs
-anywhere with Python 3.10+. [`uv`](https://docs.astral.sh/uv/) also works
-(`uv run anki.py …`) if you prefer it.
-
-Create `skill/anki/.env` with your AnkiWeb credentials (the CLI reads the `.env`
-next to `anki.py`):
+Python 3.10+, standard library only. Create `skill/anki/.env` (gitignored):
 
 ```dotenv
 ANKI_USERID=you@example.com
 ANKI_PASSWORD=your-password
 ```
 
-> `.env`, the exported cookie files, and `*.har` are gitignored — they hold live
-> credentials/sessions. Never commit them.
+Run with `python3 anki.py …` or `uv run anki.py …` from the repo root (`anki.py`
+is a symlink to `skill/anki/anki.py`). Login happens on first use and the
+session is cached in the OS temp dir.
+
+Optional: `pip install piper-tts` for offline TTS, and `ffmpeg` to store it as
+mp3 (≈6× smaller than WAV).
 
 ## Usage
 
 ```bash
-# Decks (use :: to nest)
-uv run anki.py create_deck "Spanish::Verbs"
-uv run anki.py remove-deck "Spanish::Verbs"      # also removes its cards
+# Decks ('::' nests; missing parents are created)
+python3 anki.py create_deck "Spanish::Verbs"
+python3 anki.py rename-deck "Spanish" "Languages::Spanish"
+python3 anki.py remove-deck "Spanish::Verbs"     # also removes its cards
+python3 anki.py list-decks                      # id<TAB>name
+python3 anki.py list-notetypes
 
-# Cards — positional values map to the notetype's field order
-uv run anki.py add_card "hola" "hello" -d "Spanish::Verbs" -n Basic
+# Cards — positional values fill the note type's fields in order
+python3 anki.py add_card "hola" "hello" -d "Spanish::Verbs" -n Basic
+python3 anki.py add_card "Q" "A" -f "Extra=note here" -t "tag1 tag2"
 
-# Override a field by name, add tags
-uv run anki.py add_card "Q" "A" -f "Extra=note here" -t "tag1 tag2"
+# Find and edit in place (unspecified fields and tags are preserved)
+python3 anki.py search "deck:Spanish front:hola"   # note_id<TAB>summary
+python3 anki.py update_card 1780339347382 -f "Back=hello (informal)"
 
-# Omit -d/-n to use your last-used deck / notetype
-uv run anki.py add_card "front" "back"
-
-# Pronunciation (TTS embedded in the card; AnkiWeb has no media upload)
-uv run anki.py add_card "tag" "標籤" -a "tag"
-uv run anki.py update_card 1234567890 -a "標籤" --audio-lang zh-TW --audio-field Back
-uv run anki.py add_card "tag" "標籤" -a "tag" --audio-engine piper   # local, offline
-
-# Type-in answer (works on AnkiWeb, which ignores {{type:}})
-uv run anki.py add_card "FAB type?" "acute promyelocytic leukemia" --type-answer "acute promyelocytic leukemia|APL"
-
-# Discovery
-uv run anki.py list-decks          # id<TAB>name
-uv run anki.py list-notetypes
-
-# Session
-uv run anki.py login               # force re-login, refresh cached session
+# Pronunciation and type-in answers (also on update_card)
+python3 anki.py add_card "tag" "標籤" -a "tag"
+python3 anki.py add_card "tag" "標籤" -a "tag" --audio-engine piper
+python3 anki.py add_card "FAB type?" "acute promyelocytic leukemia" \
+  --type-answer "acute promyelocytic leukemia|APL"
 ```
 
-### `add_card` options
+### Options (`add_card`; `update_card` takes the same except `-d`/`-n`)
 
 | Flag | Meaning |
 | --- | --- |
-| positional `values...` | field values in the notetype's field order |
-| `-d, --deck` | deck **name** (resolved to id) or numeric id; default: last used |
-| `-n, --notetype` | notetype **name** or numeric id; default: last used |
+| `values...` | field values in the note type's field order |
+| `-d, --deck` / `-n, --notetype` | name or numeric id; default: last used. Unknown names get a "did you mean …?" hint |
 | `-f, --field NAME=VALUE` | set a field by name (repeatable; overrides positional) |
-| `-t, --tags` | space-separated tags |
-| `-a, --audio TEXT` | append a spoken player for TEXT, embedded as a `data:` URI (no media upload needed); repeatable; also on `update_card` |
-| `--audio-lang` | TTS language: `en` (default), `en-GB`, `ja`, `zh-TW`, … |
-| `--audio-field NAME` | field to append the audio to (default: first field) |
-| `--audio-engine` | `google` (online, default, max 200 chars) or `piper` (local [Piper](https://github.com/rhasspy/piper) neural TTS: `pip install piper-tts`; voices auto-download to `$PIPER_DATA_DIR`, default `~/.local/share/piper`). Set `ANKI_AUDIO_ENGINE=piper` to make it the default |
-| `--audio-voice` | Piper voice (default by language: `en_US-lessac-medium`, `en_GB-alba-medium`, `zh_CN-huayan-medium`); needed for other languages, e.g. `de_DE-thorsten-medium` |
-| `--type-answer ANSWER` | append a type-in box checked against ANSWER (`\|` separates accepted alternatives, e.g. `"APL\|acute promyelocytic leukemia"`). AnkiWeb strips `{{type:Field}}`, so this is a self-contained JS widget: type on the front, Enter reveals, the back shows a letter-by-letter diff (case-insensitive). Also on `update_card` |
-| `--type-field NAME` | field to append the type-in box to (default: first field) |
+| `-t, --tags` | space-separated tags (`update_card`: replaces; omit to keep) |
+| `-a, --audio TEXT` | append a spoken `<audio>` player for TEXT (repeatable) |
+| `--audio-lang` | `en` (default), `en-GB`, `ja`, `zh-TW`, … |
+| `--audio-engine` | `google` (online, ≤200 chars; default) or `piper` (local). Default from `$ANKI_AUDIO_ENGINE` |
+| `--audio-voice` | Piper voice; defaults by language (`en_US-lessac-medium`, `en_GB-alba-medium`, `zh_CN-huayan-medium`). Voices download to `$PIPER_DATA_DIR` (default `~/.local/share/piper`) |
+| `--type-answer ANSWER` | append a type-in box; `\|` separates accepted answers. Enter reveals; the back shows a case-insensitive diff |
+| `--audio-field` / `--type-field NAME` | field to append to (default: first field) |
 
-Names are resolved against your collection; an unknown name produces a
-"did you mean …?" suggestion. Numeric arguments are treated as raw ids.
+## How it works
+
+AnkiWeb splits its API across two domains, each with its own session cookie
+from the same login:
+
+| Operation | Domain |
+| --- | --- |
+| add / update / read notes, list note types | `ankiuser.net` |
+| create / rename / remove / list decks, search | `ankiweb.net` |
+
+1. `POST ankiweb.net/svc/account/login` → `ankiweb.net` cookie + an
+   `ankiuser-login` token.
+2. `GET ankiuser.net/account/ankiuser-login?t=<token>` → `ankiuser.net` cookie.
+
+Bodies are protobuf (`application/octet-stream`), encoded by a small hand-rolled
+codec. Adding and editing share one endpoint, `/svc/editor/add-or-update`, whose
+`oneof` picks *add* (note type + deck) or *edit* (note id). Protocol notes for
+contributors are in [CLAUDE.md](CLAUDE.md).
 
 ## Claude skill
 
-The same CLI ships as a Claude skill (for claude.ai / Claude Code). Build the
-package with:
-
 ```bash
-make build      # -> dist/anki.skill   (bundles anki.py + SKILL.md + .env)
-make clean      # -> remove dist/
+make build      # -> dist/anki.skill (anki.py + assets/ + SKILL.md + .env)
+make link       # or: symlink into ~/.claude/skills for Claude Code
 ```
 
-Upload `dist/anki.skill` in claude.ai under **Settings → Capabilities → Skills**
-(the code-execution tool must be enabled). The package bundles `.env`, so it
-contains your live password — keep it private and never share it.
+Upload `dist/anki.skill` in claude.ai under **Settings → Capabilities → Skills**.
+It contains your `.env`, i.e. your password — keep it private.
 
-## Layout
+## Card styles and design notes
+
+- [`styles/oral-exam/`](styles/oral-exam/) — a complete house style (CSS tokens
+  for light + dark, templates, `<details>` folding) with a JSON → fields
+  generator. `make preview` renders its examples.
+- [`docs/flashcard-design-research.md`](docs/flashcard-design-research.md) —
+  the evidence behind the card-design rules in `SKILL.md`.
+
+## Development
+
+```bash
+make test       # offline unit tests (no account or network needed)
+```
 
 | Path | Purpose |
 | --- | --- |
-| `skill/anki/anki.py` | the CLI — single source of truth (pure stdlib, no deps) |
-| `skill/anki/SKILL.md` | skill manifest (how an agent drives the CLI) |
-| `skill/anki/.env` | your credentials (gitignored) |
-| `anki.py` | symlink → `skill/anki/anki.py`, for `uv run anki.py` at the repo root |
-| `Makefile` | `make build` → `dist/anki.skill` |
-| `dist/` | build output (gitignored) |
-| `styles/oral-exam/` | 血專口試快答 card style guide: CSS (light + dark), templates, field generator, preview |
+| `skill/anki/anki.py` | the CLI — single source of truth |
+| `skill/anki/assets/` | CSS/JS embedded into cards (type-in widget) |
+| `skill/anki/SKILL.md` | skill manifest + card-authoring guide for agents |
+| `tests/` | `unittest` suite, run in CI on Python 3.10 and 3.13 |
+| `styles/`, `docs/` | card styles and background research |
 
-The session cache lives in the OS temp dir (gitignored anyway), not the repo.
+Test anything that writes to AnkiWeb on a throwaway deck (`_tmp_test`) and
+remove it afterwards — the API has no single-note delete. See
+[CLAUDE.md](CLAUDE.md) for the protocol and testing conventions.
 
 ## Disclaimer
 
