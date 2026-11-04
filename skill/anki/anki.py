@@ -16,6 +16,8 @@ import argparse
 import gzip
 import http.cookiejar
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -35,6 +37,20 @@ UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
 )
+
+
+def _resolve_op(value: str) -> str:
+    """Resolve a 1Password `op://` secret reference via the `op` CLI (lazily, only at login)."""
+    if not value.startswith("op://"):
+        return value
+    try:
+        r = subprocess.run(["op", "read", "--no-newline", value],
+                           capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise AnkiError(f"cannot resolve {value} with 1Password CLI: {e}") from None
+    if r.returncode != 0:
+        raise AnkiError(f"op read {value} failed: {r.stderr.strip()}")
+    return r.stdout
 
 
 # --------------------------------------------------------------------------- #
@@ -229,8 +245,10 @@ class AnkiWebClient:
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
                 env[k.strip()] = v.strip()
+        # Real env (e.g. under `op run --env-file=.env`) wins over the file.
+        env.update({k: os.environ[k] for k in ("ANKI_USERID", "ANKI_PASSWORD") if k in os.environ})
         try:
-            return env["ANKI_USERID"], env["ANKI_PASSWORD"]
+            return _resolve_op(env["ANKI_USERID"]), _resolve_op(env["ANKI_PASSWORD"])
         except KeyError as e:
             raise AnkiError(f"missing {e} in .env") from None
 
