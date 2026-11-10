@@ -196,8 +196,16 @@ class AnkiWebClient:
             data = json.loads(SESSION_FILE.read_text())
         except (json.JSONDecodeError, OSError):
             return
+        if not isinstance(data, dict):
+            return
         for c in data.get("cookies", []):
-            self.client.cookies.set(c["name"], c["value"], domain=c["domain"], path="/")
+            if not isinstance(c, dict):
+                continue
+            try:
+                name, value, domain = c["name"], c["value"], c["domain"]
+            except KeyError:
+                continue  # malformed entry: skip instead of crashing
+            self.client.cookies.set(name, value, domain=domain, path="/")
 
     def _save_session(self) -> None:
         cookies = [
